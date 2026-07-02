@@ -1,32 +1,74 @@
 # DesignBoard
 
-> AI-powered System Design interview simulator for CS students targeting tech internships.
+DesignBoard is a multimodal AI interview simulator for CS students preparing for technical internships.
+
+It turns system design practice into a live interview room: an AI interviewer asks adaptive follow-up questions, listens through push-to-talk voice input, speaks responses with browser TTS, displays an animated Canvas avatar, and adjusts interview pressure using webcam-based emotion detection.
+
+Python · FastAPI · React · TypeScript · SQLite · DeepSeek API · face-api.js
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white)
 
-```
+## Highlights
+
+- **Multimodal Interview Room** - Zoom-style interview layout with Alex, webcam mirror, transcript, timer, and text fallback.
+- **Adaptive AI Interviewer** - DeepSeek-powered interviewer probes requirements, tradeoffs, scalability, data modeling, and failure modes.
+- **Voice Interaction** - Push-to-talk via Web Speech API, plus browser-native TTS for Alex responses.
+- **Emotion-Aware Follow-ups** - face-api.js detects candidate state and passes hidden context into the AI prompt.
+- **Real System Design Practice** - 16 curated prompts across Easy, Medium, and Hard difficulty.
+- **Automated Scorecards** - Evaluates Requirements, Components, Scalability, Data Modeling, and Communication.
+- **Session History** - SQLite-backed interview records with scorecard review.
+
+## Demo
+
+Demo screenshots coming soon.
+
+## Architecture
+
+```text
 Browser (React/Vite)
-       │
-       │ /api/* proxy
-       ▼
-FastAPI Backend ──────► DeepSeek API (SSE streaming)
-       │
-       ▼
-  SQLite (sessions + messages)
+       |
+       | /api/* proxy + SSE stream
+       v
+FastAPI Backend -----> DeepSeek API
+       |
+       v
+SQLite (sessions + messages + scorecards)
 ```
+
+Client-side browser APIs handle voice input, temporary speech output, webcam preview, and approximate expression detection. FastAPI keeps DeepSeek API access server-side and persists interview state in SQLite.
 
 ## Features
 
-- **16 Real Interview Questions** — Curated system design prompts across Easy, Medium, and Hard difficulty levels, modeled after actual FAANG interview topics.
-- **AI Interviewer ("Alex")** — DeepSeek-powered interviewer that adapts in real time. Probes requirements, capacity estimation, data modeling, scalability, and failure modes. No hand-holding, no coaching.
-- **Live Streaming Responses** — Server-Sent Events deliver AI responses character by character, as if Alex is speaking to you in real time.
-- **45-Minute Timer** — Industry-standard time limit with color transitions (white → yellow at 10 min → red at 5 min). Auto-ends and evaluates when time runs out.
-- **Automated Scorecard** — After each interview, DeepSeek generates a scored evaluation across 5 dimensions (Requirements, Components, Scalability, Data Modeling, Communication) with specific missed points and a summary.
-- **Session History** — Review all past interviews with inline scorecard expansion.
-- **Dark Theme** — Minimal, low-contrast dark UI with no box-shadows, no gradients, no large rounded corners.
+1. **Multimodal Interview Room** - A fixed Zoom-style interview room with Alex, webcam mirror, transcript, timer, push-to-talk, and fallback text input.
+2. **AI Interviewer Alex** - DeepSeek-powered interviewer that asks focused follow-ups and probes requirements, capacity estimation, components, data modeling, scalability, and failure modes.
+3. **Voice Input and TTS** - Push-to-talk speech input through the Web Speech API, plus browser-native `speechSynthesis` for Alex responses.
+4. **Webcam Emotion Detection** - Optional client-side face-api.js expression detection maps raw expressions into simple adaptive context labels such as `neutral`, `focused`, `nervous`, `confused`, and `confident`.
+5. **Live Streaming Responses** - Server-Sent Events deliver DeepSeek responses incrementally as Alex responds.
+6. **45-Minute Timer** - Interview-style time limit with color transitions and auto-end behavior when time expires.
+7. **Automated Scorecard** - DeepSeek generates a scored evaluation across Requirements, Components, Scalability, Data Modeling, and Communication.
+8. **Session History** - Review past interviews with stored transcript and scorecard results.
+9. **Curated System Design Questions** - 16 prompts inspired by common system design interview patterns across Easy, Medium, and Hard difficulty.
+10. **Dark Theme** - Minimal, low-contrast interface with a serious interview-room feel.
+
+## Project Status
+
+DesignBoard currently supports local-first interview simulation with AI streaming, voice input, browser TTS, webcam emotion detection, persistent session history, and automated scorecards.
+
+Next planned feature: JD-tailored interview generation, where users paste a job description and DesignBoard generates a company/role-specific interview blueprint.
+
+## Planned: JD-Tailored Interview Mode
+
+This mode is planned, not currently implemented.
+
+- Paste a job description.
+- Extract company, role, seniority, tech stack, domain, and responsibilities.
+- Generate a personalized interview blueprint.
+- Create role-specific coding, CS fundamentals, system design, domain deep-dive, and behavioral questions.
+- Fall back to JD-only analysis if no public company information is available.
 
 ## Quick Start
 
@@ -46,20 +88,18 @@ pip install -r requirements.txt
 cd ../frontend
 npm install
 
-# 4. Start both servers (run in separate terminals)
+# 4. Start both servers in separate terminals
 
-# Terminal 1 — Backend (port 8000)
+# Terminal 1 - Backend (port 8000)
 cd backend
 uvicorn main:app --reload --port 8000
 
-# Terminal 2 — Frontend (port 5173)
+# Terminal 2 - Frontend (port 5173)
 cd frontend
 npm run dev
 
-# 5. Open http://localhost:5173 in your browser
+# 5. Open http://localhost:5173
 ```
-
-## Technical Decisions
 
 ## v2 Multimodal Interview Room
 
@@ -97,7 +137,7 @@ Future TTS upgrade path:
 ## Technical Architecture
 
 - React interview room controls voice, camera, avatar, transcript, and timer state.
-- FastAPI keeps AI API access server-side and streams Alex responses over SSE.
+- FastAPI keeps DeepSeek API access server-side and streams Alex responses over SSE.
 - SQLite stores sessions, messages, scorecards, and lightweight candidate input metadata.
 - Browser Web Speech API handles push-to-talk speech input.
 - Browser SpeechSynthesis handles temporary Alex TTS output.
@@ -112,18 +152,16 @@ Future TTS upgrade path:
 - Voice input uses the browser Web Speech API; Chrome and Edge are recommended.
 - Text fallback always works even when voice, microphone, camera, emotion detection, or TTS is unavailable.
 
+## Technical Decisions
+
 ### Why SSE over WebSockets for streaming
 
-Server-Sent Events (SSE) were chosen over WebSockets for the AI response streaming because the communication pattern is fundamentally unidirectional. The client sends a message via a standard POST request, and the server responds with a stream of tokens from the AI model. SSE leverages standard HTTP, works transparently through Vite's dev proxy, and requires no additional connection management libraries. WebSockets would add unnecessary complexity for bidirectional communication that isn't actually needed — the candidate's messages are always discrete request-response cycles, not a persistent bidirectional channel. SSE also plays naturally with FastAPI's `StreamingResponse`, which can consume an async generator and emit `text/event-stream` content without any framework extensions.
+Server-Sent Events (SSE) were chosen over WebSockets for the AI response streaming because the communication pattern is fundamentally unidirectional. The client sends a message via a standard POST request, and the server responds with a stream of tokens from the AI model. SSE leverages standard HTTP, works transparently through Vite's dev proxy, and requires no additional connection management libraries. WebSockets would add unnecessary complexity for bidirectional communication that is not actually needed because the candidate's messages are discrete request-response cycles, not a persistent bidirectional channel. SSE also plays naturally with FastAPI's `StreamingResponse`, which can consume an async generator and emit `text/event-stream` content without any framework extensions.
 
 ### Why SQLite over PostgreSQL
 
-For a local-first demo application, SQLite eliminates all operational overhead. There's no database server to install, no connection pooling to configure, no migrations to run. SQLAlchemy's ORM abstracts the storage layer completely, so migrating to PostgreSQL (or any other dialect) later is a one-line change to the connection string. The concurrency model of SQLite is more than sufficient for a single-user interview simulation — peak traffic is one candidate sending a message and receiving a streamed response. The simplicity gain (zero-ops, zero-config) far outweighs any theoretical scalability benefit from a client-server database in this context.
+For a local-first demo application, SQLite eliminates operational overhead. There is no database server to install, no connection pooling to configure, and no migrations to run for the current schema. SQLAlchemy's ORM abstracts the storage layer, so migrating to PostgreSQL or another dialect later is mostly a configuration change. The concurrency model of SQLite is sufficient for a single-user interview simulation: peak traffic is one candidate sending a message and receiving a streamed response. The simplicity gain outweighs any theoretical scalability benefit from a client-server database in this context.
 
 ### How the AI interviewer prompt was engineered
 
-The system prompt for Alex is designed to avoid two common pitfalls in AI interview simulators: excessive helpfulness and generic feedback. By explicitly instructing DeepSeek to be "terse, professional, evaluative" and to "ask ONE focused question at a time", the prompt prevents the model from dumping a checklist of topics or hinting at the right answer. Specific behavioral rules (pressing vague answers, escalating on strong answers, staying silent when the candidate should be talking) create natural interview pressure. The 2-4 sentence response limit forces Alex to react conversationally rather than lecture, simulating the pace of a real system design interview where the interviewer reacts to each statement rather than delivering prepared content.
-
----
-
-> Demo screenshots coming soon
+The system prompt for Alex is designed to avoid two common pitfalls in AI interview simulators: excessive helpfulness and generic feedback. By instructing DeepSeek to be terse, professional, evaluative, and to ask one focused question at a time, the prompt prevents the model from dumping a checklist of topics or hinting at the right answer. Specific behavioral rules for pressing vague answers, probing weak answers, escalating strong answers, and asking what the candidate is considering during pauses create interview-style pressure. The 2-4 sentence response limit forces Alex to react conversationally rather than lecture.
