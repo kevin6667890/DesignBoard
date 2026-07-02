@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -20,6 +21,9 @@ class CreateSessionRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+    emotion_label: str | None = None
+    input_mode: Literal["text", "voice"] | None = None
+    transcript_confidence: float | None = None
 
 
 def _fmt_dt(dt) -> str | None:
@@ -59,6 +63,8 @@ def _message_to_dict(message: Message) -> dict:
         "session_id": message.session_id,
         "role": message.role,
         "content": message.content,
+        "input_mode": message.input_mode,
+        "transcript_confidence": message.transcript_confidence,
         "created_at": _fmt_dt(message.created_at),
     }
 
@@ -134,6 +140,9 @@ async def send_message(session_id: int, req: SendMessageRequest, db: SQLSession 
         session_id=session_id,
         role="candidate",
         content=req.content,
+        input_mode=req.input_mode or "text",
+        transcript_confidence=req.transcript_confidence,
+        emotion_label=req.emotion_label,
     )
     db.add(candidate_msg)
     db.commit()
@@ -148,7 +157,7 @@ async def send_message(session_id: int, req: SendMessageRequest, db: SQLSession 
     # We need to pass db reference to the streaming generator to save the final message
     async def event_stream():
         full_response = ""
-        async for chunk in stream_ai_response(history):
+        async for chunk in stream_ai_response(history, req.emotion_label):
             full_response += chunk
             yield f"data: {json.dumps({'delta': chunk, 'done': False})}\n\n"
 

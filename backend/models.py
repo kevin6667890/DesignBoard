@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Float, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
@@ -35,6 +35,9 @@ class Message(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
+    input_mode = Column(String, nullable=True)
+    transcript_confidence = Column(Float, nullable=True)
+    emotion_label = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     session = relationship("Session", back_populates="messages")

@@ -41,8 +41,19 @@ def _build_opening_message(question_title: str) -> str:
     )
 
 
-def _build_conversation_messages(history: list[dict]) -> list[dict]:
+EMOTION_CONTEXT = {
+    "nervous": "The candidate appears nervous. Ask a clearer, more grounded follow-up and reduce ambiguity slightly.",
+    "confused": "The candidate appears confused. Reframe the question without giving away the answer.",
+    "confident": "The candidate appears confident. Increase difficulty and ask deeper scalability or failure-mode questions.",
+    "focused": "The candidate appears focused. Continue normally.",
+}
+
+
+def _build_conversation_messages(history: list[dict], emotion_label: str | None = None) -> list[dict]:
     messages = [{"role": "system", "content": INTERVIEWER_SYSTEM_PROMPT}]
+    emotion_instruction = EMOTION_CONTEXT.get(emotion_label or "")
+    if emotion_instruction:
+        messages.append({"role": "system", "content": f"[Candidate state: {emotion_instruction}]"})
     for msg in history:
         role = "assistant" if msg["role"] == "interviewer" else "user"
         messages.append({"role": role, "content": msg["content"]})
@@ -82,8 +93,8 @@ async def generate_opening_message(question_title: str) -> str:
     return _build_opening_message(question_title)
 
 
-async def stream_ai_response(history: list[dict]) -> AsyncGenerator[str, None]:
-    messages = _build_conversation_messages(history)
+async def stream_ai_response(history: list[dict], emotion_label: str | None = None) -> AsyncGenerator[str, None]:
+    messages = _build_conversation_messages(history, emotion_label)
     stream = await client.chat.completions.create(
         model="deepseek-chat",
         max_tokens=1024,

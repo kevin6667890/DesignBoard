@@ -11,9 +11,11 @@ frontend/node_modules/
 
 # Build
 frontend/dist/
+frontend/*.tsbuildinfo
 
 # Misc
 .venv/
+.idea/
 *.egg-info/
 .DS_Store
 Thumbs.db

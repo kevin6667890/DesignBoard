@@ -5,6 +5,13 @@ import { getSession, sendMessageStream, endSession } from '../lib/api';
 import MessageThread from '../components/MessageThread';
 import Timer from '../components/Timer';
 import ScoreCard from '../components/ScoreCard';
+import AlexAvatar, { type AlexAvatarState } from '../components/avatar/AlexAvatar';
+import VideoMirror from '../components/interview/VideoMirror';
+import { usePushToTalk } from '../hooks/usePushToTalk';
+import { useTTS } from '../hooks/useTTS';
+import type { EmotionLabel } from '../hooks/useEmotionDetection';
+
+type InputMode = 'text' | 'voice';
 
 export default function Interview() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -19,11 +26,30 @@ export default function Interview() {
   const [timeUp, setTimeUp] = useState(false);
   const [ending, setEnding] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [stableEmotion, setStableEmotion] = useState<EmotionLabel>('neutral');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endedRef = useRef(false);
+  const sessionRef = useRef<SessionData | null>(null);
+  const isStreamingRef = useRef(false);
+  const stableEmotionRef = useRef<EmotionLabel>('neutral');
 
-  // Hydrate on mount
+  const tts = useTTS();
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  useEffect(() => {
+    stableEmotionRef.current = stableEmotion;
+  }, [stableEmotion]);
+
   useEffect(() => {
     if (!sessionId) return;
     const id = parseInt(sessionId, 10);
@@ -35,29 +61,36 @@ export default function Interview() {
           setShowScore(true);
         }
       })
-      .catch(console.error);
+      .catch(() => setNotFound(true));
   }, [sessionId]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (ta) {
       ta.style.height = 'auto';
-      ta.style.height = Math.min(ta.scrollHeight, 6 * 24) + 'px';
+      ta.style.height = `${Math.min(ta.scrollHeight, 6 * 24)}px`;
     }
   }, [input]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isStreaming || !session || session.status !== 'active') return;
+  const submitAnswer = useCallback(async (
+    rawText: string,
+    inputMode: InputMode,
+    transcriptConfidence?: number,
+  ) => {
+    const currentSession = sessionRef.current;
+    const text = rawText.trim();
+    if (!text || isStreamingRef.current || !currentSession || currentSession.status !== 'active') return;
 
-    const text = input.trim();
+    tts.cancel();
     setInput('');
     const temp: MessageData = {
       id: Date.now(),
-      session_id: session.id,
+      session_id: currentSession.id,
       role: 'candidate',
       content: text,
       created_at: new Date().toISOString(),
+      input_mode: inputMode,
+      transcript_confidence: transcriptConfidence ?? null,
     };
     setMessages((prev) => [...prev, temp]);
     setIsStreaming(true);
@@ -67,8 +100,13 @@ export default function Interview() {
 
     try {
       await sendMessageStream(
-        session.id,
+        currentSession.id,
         text,
+        {
+          emotion_label: stableEmotionRef.current,
+          input_mode: inputMode,
+          transcript_confidence: transcriptConfidence,
+        },
         (delta) => {
           accumulated += delta;
           setStreamingText(accumulated);
@@ -76,24 +114,64 @@ export default function Interview() {
         () => {
           setIsStreaming(false);
           setStreamingText('');
-          // Refresh to get the saved interviewer message
-          if (session) {
-            getSession(session.id).then((data) => {
-              setMessages(data.messages);
-            }).catch(console.error);
+          if (accumulated.trim()) {
+            tts.speak(accumulated);
+          }
+          const latestSession = sessionRef.current;
+          if (latestSession) {
+            getSession(latestSession.id)
+              .then((data) => setMessages(data.messages))
+              .catch(console.error);
           }
         },
         (err) => {
           console.error(err);
           setIsStreaming(false);
           setStreamingText('');
-        }
+        },
       );
     } catch (err) {
       console.error(err);
       setIsStreaming(false);
       setStreamingText('');
     }
+  }, [tts]);
+
+  const pushToTalk = usePushToTalk({
+    disabled: isStreaming || !session || session.status !== 'active',
+    onFinalTranscript: ({ text, confidence }) => {
+      void submitAnswer(text, 'voice', confidence);
+    },
+  });
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      pushToTalk.startListening();
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      pushToTalk.stopListening();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [pushToTalk]);
+
+  const handleSend = () => {
+    void submitAnswer(input, 'text');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -108,6 +186,7 @@ export default function Interview() {
     setShowConfirm(false);
     setEnding(true);
     endedRef.current = true;
+    tts.cancel();
 
     try {
       const completed = await endSession(session.id);
@@ -115,7 +194,7 @@ export default function Interview() {
       setShowScore(true);
     } catch (err) {
       console.error(err);
-      endedRef.current = false; // allow retry if API call failed
+      endedRef.current = false;
     } finally {
       setEnding(false);
     }
@@ -124,9 +203,18 @@ export default function Interview() {
   const handleTimeUp = useCallback(() => {
     if (!timeUp && session && session.status === 'active' && !endedRef.current) {
       setTimeUp(true);
-      handleEnd();
+      void handleEnd();
     }
   }, [timeUp, session]);
+
+  if (notFound) {
+    return (
+      <div className="interview-loading">
+        <p style={{ marginBottom: 12 }}>Session not found.</p>
+        <button className="btn-text" onClick={() => navigate('/')}>Back to Home</button>
+      </div>
+    );
+  }
 
   if (!session) {
     return (
@@ -142,108 +230,150 @@ export default function Interview() {
     Hard: 'var(--hard)',
   };
 
+  const avatarState: AlexAvatarState = tts.isSpeaking
+    ? 'speaking'
+    : isStreaming
+      ? 'thinking'
+      : pushToTalk.isListening
+        ? 'listening'
+      : 'idle';
+
+  const voiceStatusMessage = (() => {
+    if (!pushToTalk.isSupported || pushToTalk.status === 'unsupported') {
+      return 'Voice input is not supported in this browser. Use Chrome or Edge, or type your answer below.';
+    }
+    if (isStreaming) return 'Processing answer...';
+    if (pushToTalk.isListening) return 'Listening... release to submit.';
+    if (pushToTalk.status === 'denied') {
+      return 'Microphone permission denied. Enable microphone access or type your answer below.';
+    }
+    if (pushToTalk.status === 'error') return 'Voice input failed. Type your answer below.';
+    return 'Hold the button or hold Space to speak.';
+  })();
+
   return (
-    <div className="interview">
-      {/* Left panel */}
-      <aside className="interview-left">
-        <div className="left-panel-content">
-          <div className="question-info">
-            <h2 className="left-question-title">{session.question_title}</h2>
-            <span
-              className="difficulty-tag"
-              style={{ color: difficultyColor[session.difficulty] || 'var(--text-secondary)' }}
-            >
-              {session.difficulty}
-            </span>
-          </div>
-
-          <div className="thin-divider" />
-
-          {session.status === 'active' && (
-            <Timer
-              startedAt={session.started_at!}
-              onTimeUp={handleTimeUp}
-            />
-          )}
-
-          {timeUp && (
-            <div className="time-up-banner">
-              Time's up — your interview has ended
-            </div>
-          )}
-
-          {session.status === 'active' && (
-            <>
-              <button
-                className="end-btn"
-                onClick={() => setShowConfirm(true)}
-                disabled={ending}
-              >
-                {ending ? 'Generating Scorecard...' : 'End Interview'}
-              </button>
-
-              {showConfirm && (
-                <div className="confirm-dialog">
-                  <p>Are you sure? This will generate your scorecard.</p>
-                  <div className="confirm-actions">
-                    <button className="btn-text" onClick={() => setShowConfirm(false)}>Cancel</button>
-                    <button className="btn-filled" onClick={handleEnd}>Confirm</button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          <button
-            className="btn-text back-btn"
-            onClick={() => navigate('/')}
+    <div className="interview-room">
+      <header className="room-topbar">
+        <div className="room-brand">
+          <span className="wordmark">DesignBoard</span>
+          <span
+            className="difficulty-tag"
+            style={{ color: difficultyColor[session.difficulty] || 'var(--text-secondary)' }}
           >
-            ← Back to Home
-          </button>
+            {session.difficulty}
+          </span>
         </div>
-      </aside>
 
-      {/* Right panel */}
-      <main className="interview-right">
-        <MessageThread
-          messages={messages}
-          streamingText={streamingText}
-          isStreaming={isStreaming}
+        <div className="room-question">
+          <span className="room-question-label">Interview</span>
+          <h1>{session.question_title}</h1>
+        </div>
+
+        <div className="room-actions">
+          {session.status === 'active' && (
+            <Timer startedAt={session.started_at!} onTimeUp={handleTimeUp} />
+          )}
+          {session.status === 'active' && (
+            <button className="end-btn compact" onClick={() => setShowConfirm(true)} disabled={ending}>
+              {ending ? 'Scoring...' : 'End Interview'}
+            </button>
+          )}
+          <button className="btn-text" onClick={() => navigate('/')}>Home</button>
+        </div>
+      </header>
+
+      {timeUp && <div className="time-up-banner room-banner">Time is up. Your interview has ended.</div>}
+
+      {showConfirm && (
+        <div className="confirm-dialog room-confirm">
+          <p>End this interview and generate your scorecard?</p>
+          <div className="confirm-actions">
+            <button className="btn-text" onClick={() => setShowConfirm(false)}>Cancel</button>
+            <button className="btn-filled" onClick={handleEnd}>Confirm</button>
+          </div>
+        </div>
+      )}
+
+      <main className="room-main">
+        <section className="alex-panel" aria-label="Alex interviewer">
+          <div className="panel-header">
+            <span>Alex</span>
+            <span>{avatarState}</span>
+          </div>
+          <div className="avatar-stage">
+            <AlexAvatar state={avatarState} />
+          </div>
+          <div className="voice-controls">
+            <button className="btn-text small" onClick={tts.toggleMuted} disabled={!tts.isSupported}>
+              {tts.muted ? 'Unmute Alex' : 'Mute Alex'}
+            </button>
+            {tts.isSpeaking && (
+              <button className="btn-text small" onClick={tts.cancel}>Skip voice</button>
+            )}
+            {!tts.isSupported && <span className="fallback-note">speech synthesis unavailable</span>}
+          </div>
+        </section>
+
+        <VideoMirror
+          enabled={cameraEnabled}
+          onToggle={() => setCameraEnabled((current) => !current)}
+          onStableEmotionChange={setStableEmotion}
         />
+      </main>
+
+      <section className="room-bottom">
+        <div className="transcript-panel">
+          <div className="panel-header">
+            <span>Recent transcript</span>
+            <span>candidate state: {stableEmotion}</span>
+          </div>
+          <MessageThread messages={messages} streamingText={streamingText} isStreaming={isStreaming} />
+        </div>
 
         {session.status === 'active' && (
-          <div className="input-area">
+          <div className="input-area multimodal-input">
+            <div className="ptt-row">
+              <button
+                className={`push-talk-btn ${pushToTalk.isListening ? 'listening' : ''}`}
+                onPointerDown={pushToTalk.startListening}
+                onPointerUp={pushToTalk.stopListening}
+                onPointerLeave={pushToTalk.stopListening}
+                disabled={!pushToTalk.isSupported || isStreaming}
+              >
+                {pushToTalk.isListening ? 'Listening...' : 'Hold to Talk'}
+              </button>
+              <span className="voice-status">{voiceStatusMessage}</span>
+            </div>
+
+            {pushToTalk.interimTranscript && (
+              <div className="interim-transcript">{pushToTalk.interimTranscript}</div>
+            )}
+            {pushToTalk.error && pushToTalk.status === 'error' && (
+              <div className="fallback-note">Voice input failed. Type your answer below.</div>
+            )}
+
             <div className="input-row">
               <textarea
                 ref={textareaRef}
                 className="message-input"
-                placeholder="Respond to Alex..."
+                placeholder="Fallback text answer..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isStreaming}
                 rows={1}
               />
-              <button
-                className="send-btn"
-                onClick={handleSend}
-                disabled={isStreaming || !input.trim()}
-              >
-                ↵ Send
+              <button className="send-btn" onClick={handleSend} disabled={isStreaming || !input.trim()}>
+                Send answer
               </button>
             </div>
-            {isStreaming && (
-              <div className="streaming-label">Alex is responding...</div>
-            )}
+            {isStreaming && <div className="streaming-label">Alex is responding...</div>}
           </div>
         )}
-      </main>
+      </section>
 
       {showScore && session && session.score_total !== null && (
-        <ScoreCard
-          session={session}
-          onClose={() => setShowScore(false)}
-        />
+        <ScoreCard session={session} onClose={() => setShowScore(false)} />
       )}
     </div>
   );

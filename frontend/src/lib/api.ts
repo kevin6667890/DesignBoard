@@ -30,6 +30,8 @@ export interface MessageData {
   role: 'interviewer' | 'candidate';
   content: string;
   created_at: string;
+  input_mode?: 'text' | 'voice' | null;
+  transcript_confidence?: number | null;
 }
 
 export interface CreateSessionResponse {
@@ -78,6 +80,11 @@ export function getSession(sessionId: number): Promise<SessionDetailResponse> {
 export async function sendMessageStream(
   sessionId: number,
   content: string,
+  metadata: {
+    emotion_label?: string;
+    input_mode?: 'text' | 'voice';
+    transcript_confidence?: number;
+  },
   onDelta: (text: string) => void,
   onDone: () => void,
   onError: (err: Error) => void
@@ -85,7 +92,7 @@ export async function sendMessageStream(
   const res = await fetch(`${BASE}/sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...metadata }),
   });
 
   if (!res.ok) {
