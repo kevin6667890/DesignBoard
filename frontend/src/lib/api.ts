@@ -42,6 +42,74 @@ export interface InterviewBlueprint {
   scoring_focus: string[];
 }
 
+export interface CandidateProfile {
+  id: number | null;
+  name: string | null;
+  target_roles: string[];
+  target_locations: string[];
+  education: Record<string, string | number | null>;
+  work_authorization_notes: string;
+  skills: Record<string, string[]>;
+  projects: Array<Record<string, unknown>>;
+  preferences: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export type CareerJobStatus = 'saved' | 'ready_to_apply' | 'applied' | 'oa' | 'interview' | 'rejected' | 'offer' | 'archived';
+export type CareerJobPriority = 'high' | 'medium' | 'low' | 'unknown';
+
+export interface ParsedCareerJob {
+  company_name: string | null;
+  role_title: string | null;
+  location: string | null;
+  employment_type: string;
+  term: string;
+  domain: string;
+  tech_stack: Record<string, string[]>;
+  responsibilities: string[];
+  required_skills: string[];
+  nice_to_have: string[];
+  application_requirements: string[];
+  deadline: string | null;
+  work_authorization_signals: string[];
+  ats_or_platform: string;
+  summary: string;
+  risk_flags: string[];
+}
+
+export interface FitBreakdown {
+  overall_score: number;
+  priority: CareerJobPriority;
+  summary: string;
+  breakdown: Record<string, number>;
+  matched_strengths: string[];
+  gaps: string[];
+  recommended_resume_keywords: string[];
+  recommended_projects_to_highlight: string[];
+  next_action: string;
+}
+
+export interface CareerJob {
+  id: number;
+  company_name: string | null;
+  role_title: string | null;
+  location: string | null;
+  job_url: string | null;
+  application_url: string | null;
+  source: string | null;
+  raw_job_description: string | null;
+  parsed_job: ParsedCareerJob | null;
+  fit_score: number | null;
+  fit_summary: string | null;
+  fit_breakdown: FitBreakdown | null;
+  status: CareerJobStatus;
+  priority: CareerJobPriority;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface SessionData {
   id: number;
   question_id: string;
@@ -214,4 +282,62 @@ export async function sendMessageStream(
 
 export function endSession(sessionId: number): Promise<SessionData> {
   return fetchJson(`/sessions/${sessionId}/end`, { method: 'POST' });
+}
+
+export function getCandidateProfile(): Promise<CandidateProfile> {
+  return fetchJson('/career/profile');
+}
+
+export function saveCandidateProfile(profile: Omit<CandidateProfile, 'id' | 'created_at' | 'updated_at'>): Promise<CandidateProfile> {
+  return fetchJson('/career/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  });
+}
+
+export function listCareerJobs(): Promise<CareerJob[]> {
+  return fetchJson('/career/jobs');
+}
+
+export function createCareerJob(job: Partial<CareerJob>): Promise<CareerJob> {
+  return fetchJson('/career/jobs', {
+    method: 'POST',
+    body: JSON.stringify(job),
+  });
+}
+
+export function getCareerJob(jobId: number): Promise<CareerJob> {
+  return fetchJson(`/career/jobs/${jobId}`);
+}
+
+export function updateCareerJob(jobId: number, job: Partial<CareerJob>): Promise<CareerJob> {
+  return fetchJson(`/career/jobs/${jobId}`, {
+    method: 'PUT',
+    body: JSON.stringify(job),
+  });
+}
+
+export function deleteCareerJob(jobId: number): Promise<{ ok: boolean }> {
+  return fetchJson(`/career/jobs/${jobId}`, { method: 'DELETE' });
+}
+
+export function parseCareerJob(jobId: number, interviewLanguage: Language): Promise<CareerJob> {
+  return fetchJson(`/career/jobs/${jobId}/parse`, {
+    method: 'POST',
+    body: JSON.stringify({ interview_language: interviewLanguage }),
+  });
+}
+
+export function scoreCareerJob(jobId: number, interviewLanguage: Language): Promise<CareerJob> {
+  return fetchJson(`/career/jobs/${jobId}/score`, {
+    method: 'POST',
+    body: JSON.stringify({ interview_language: interviewLanguage }),
+  });
+}
+
+export function prepareCareerInterview(jobId: number, interviewLanguage: Language): Promise<{ profile: JDProfile; blueprint: InterviewBlueprint }> {
+  return fetchJson(`/career/jobs/${jobId}/prepare-interview`, {
+    method: 'POST',
+    body: JSON.stringify({ interview_language: interviewLanguage }),
+  });
 }

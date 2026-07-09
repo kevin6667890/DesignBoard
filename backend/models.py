@@ -85,3 +85,41 @@ class InterviewBlueprint(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     profile = relationship("JDProfile")
+
+
+class CandidateProfile(Base):
+    __tablename__ = "candidate_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=True)
+    target_roles_json = Column(Text, nullable=True)
+    target_locations_json = Column(Text, nullable=True)
+    education_json = Column(Text, nullable=True)
+    work_authorization_notes = Column(Text, nullable=True)
+    skills_json = Column(Text, nullable=True)
+    projects_json = Column(Text, nullable=True)
+    preferences_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class CareerJob(Base):
+    __tablename__ = "career_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_name = Column(String, nullable=True)
+    role_title = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    job_url = Column(Text, nullable=True)
+    application_url = Column(Text, nullable=True)
+    source = Column(String, nullable=True)
+    raw_job_description = Column(Text, nullable=True)
+    parsed_job_json = Column(Text, nullable=True)
+    fit_score = Column(Integer, nullable=True)
+    fit_summary = Column(Text, nullable=True)
+    fit_breakdown_json = Column(Text, nullable=True)
+    status = Column(String, default="saved", nullable=False)
+    priority = Column(String, default="unknown", nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

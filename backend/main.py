@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
 from database import engine, Base
+from routers.career import router as career_router
 from routers.jd import router as jd_router
 from routers.questions import router as questions_router
 from routers.sessions import router as sessions_router
@@ -69,6 +70,7 @@ app.add_middleware(
 app.include_router(questions_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(jd_router, prefix="/api")
+app.include_router(career_router, prefix="/api")
 
 
 @app.get("/api/health")

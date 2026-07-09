@@ -21,6 +21,7 @@ Python · FastAPI · React · TypeScript · SQLite · DeepSeek API · face-api.j
 - **Real System Design Practice** - 16 curated prompts across Easy, Medium, and Hard difficulty.
 - **Bilingual App Support** - English and Chinese UI controls are separate from the interview language used by Alex and scorecards.
 - **JD-Tailored Interview Planner** - Paste a job description to generate a role profile, interview blueprint, and start a custom system design interview.
+- **Career Mode / Internship Radar** - Track Canadian internship opportunities, parse JDs, score fit, and send saved jobs into interview prep.
 - **Automated Scorecards** - Evaluates Requirements, Components, Scalability, Data Modeling, and Communication.
 - **Session History** - SQLite-backed interview records with scorecard review.
 
@@ -54,11 +55,12 @@ Client-side browser APIs handle voice input, temporary speech output, webcam pre
 7. **Automated Scorecard** - DeepSeek generates a scored evaluation across Requirements, Components, Scalability, Data Modeling, and Communication.
 8. **Session History** - Review past interviews with stored transcript and scorecard results.
 9. **Curated System Design Questions** - 16 prompts inspired by common system design interview patterns across Easy, Medium, and Hard difficulty.
-10. **Dark Theme** - Minimal, low-contrast interface with a serious interview-room feel.
+10. **Career Mode / Internship Radar** - Candidate profile, manual job intake, AI JD parsing, fit scoring, application tracking, and search query generation.
+11. **Dark Theme** - Minimal, low-contrast interface with a serious interview-room feel.
 
 ## Project Status
 
-DesignBoard currently supports local-first interview simulation with AI streaming, voice input, browser TTS, webcam emotion detection, persistent session history, automated scorecards, bilingual UI/interview language controls, and JD-tailored system design interviews.
+DesignBoard currently supports local-first interview simulation with AI streaming, voice input, browser TTS, webcam emotion detection, persistent session history, automated scorecards, bilingual UI/interview language controls, JD-tailored system design interviews, and Career Mode internship tracking.
 
 ## Bilingual App Support
 
@@ -81,6 +83,25 @@ JD mode is implemented as a local-first, JD-only flow:
 - Custom sessions carry JD profile and blueprint context into Alex's hidden prompt, and scorecards can include Role Fit / JD Alignment.
 
 Company web research is planned but not implemented. Coding/editor rounds are planned but not implemented.
+
+## Career Mode / Internship Radar
+
+Career Mode helps a CS student organize Canadian internship opportunities without scraping job boards or automating applications.
+
+- **Candidate profile** - Store target roles, target locations, education, skills, projects, work authorization notes, and preferences locally in SQLite.
+- **Job intake** - Manually save pasted job descriptions, job posting URLs, application URLs, source, status, priority, and notes.
+- **AI JD parsing** - DeepSeek extracts company, role, location, term, domain, tech stack, responsibilities, requirements, platform hints, summaries, and risk flags from pasted JDs.
+- **Fit scoring** - Compares parsed jobs against the candidate profile and returns a conservative score, priority, strengths, gaps, resume keywords, project highlights, and next action.
+- **Application tracking** - Track saved, ready to apply, applied, OA, interview, rejected, offer, and archived statuses with quick updates.
+- **Search query generator** - Generates copyable search queries and safe Google search links for internship channels such as Greenhouse, Lever, LinkedIn, Indeed, company career pages, Wellfound, Job Bank, and university portals.
+- **Interview preparation handoff** - Sends a saved job with a pasted JD into the existing JD-tailored interview planner so the user can generate a blueprint and start a custom system design interview.
+
+Career Mode does not scrape LinkedIn, Indeed, Glassdoor, or protected platforms. It does not auto-apply, bypass rate limits, handle captchas, or provide legal/immigration advice.
+
+## Roadmap
+
+- v4 Career Mode is implemented.
+- Future: coding round, CS fundamentals round, company research, and resume tailoring.
 
 ## Quick Start
 

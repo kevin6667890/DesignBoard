@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import HistoryTable from '../components/HistoryTable';
+import MainNav from '../components/MainNav';
 import type { SessionData } from '../lib/api';
 import { listSessions } from '../lib/api';
 import { useI18n } from '../i18n/useI18n';
@@ -8,7 +8,6 @@ import { useI18n } from '../i18n/useI18n';
 export default function History() {
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
   const { t } = useI18n();
 
   useEffect(() => {
@@ -24,11 +23,7 @@ export default function History() {
         <div className="logo-area">
           <h1 className="wordmark">{t('designBoard')}</h1>
         </div>
-        <nav className="nav-links">
-          <button className="btn-text" onClick={() => navigate('/')}>
-            &lt;- {t('home')}
-          </button>
-        </nav>
+        <MainNav />
       </header>
 
       <div className="history-content">

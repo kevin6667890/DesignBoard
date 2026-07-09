@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LanguageControls from '../components/LanguageControls';
+import MainNav from '../components/MainNav';
 import QuestionGrid from '../components/QuestionGrid';
 import type { Question, SessionData } from '../lib/api';
 import { getQuestions, listSessions } from '../lib/api';
@@ -64,11 +65,7 @@ export default function Home() {
           <h1 className="wordmark">{t('designBoard')}</h1>
           <p className="tagline">{t('systemDesignPractice')}</p>
         </div>
-        <nav className="nav-links">
-          <button className="btn-text" onClick={() => navigate('/history')}>
-            {t('history')} -&gt;
-          </button>
-        </nav>
+        <MainNav />
       </header>
 
       <LanguageControls />

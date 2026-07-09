@@ -366,3 +366,262 @@ JSON schema:
     ]:
         blueprint[key] = _safe_list(blueprint.get(key))
     return blueprint
+
+
+def _fallback_parsed_job(company_name: str | None, role_title: str | None, location: str | None, language: str) -> dict:
+    return {
+        "company_name": company_name,
+        "role_title": role_title,
+        "location": location,
+        "employment_type": "unknown",
+        "term": "unknown",
+        "domain": "general",
+        "tech_stack": {
+            "languages": [],
+            "frontend": [],
+            "backend": [],
+            "databases": [],
+            "cloud_devops": [],
+            "ai_tools": [],
+            "testing": [],
+            "other": [],
+        },
+        "responsibilities": [],
+        "required_skills": [],
+        "nice_to_have": [],
+        "application_requirements": [],
+        "deadline": None,
+        "work_authorization_signals": [],
+        "ats_or_platform": "unknown",
+        "summary": "Needs pasted JD before reliable parsing." if language == "en" else "需要粘贴 JD 后才能可靠解析。",
+        "risk_flags": ["Needs JD"] if language == "en" else ["需要 JD"],
+    }
+
+
+def _normalize_parsed_job(parsed: dict, company_name: str | None, role_title: str | None, location: str | None, language: str) -> dict:
+    fallback = _fallback_parsed_job(company_name, role_title, location, language)
+    for key, value in fallback.items():
+        parsed.setdefault(key, value)
+    parsed["company_name"] = parsed.get("company_name") or company_name
+    parsed["role_title"] = parsed.get("role_title") or role_title
+    parsed["location"] = parsed.get("location") or location
+    parsed["tech_stack"] = parsed.get("tech_stack") if isinstance(parsed.get("tech_stack"), dict) else fallback["tech_stack"]
+    for key in fallback["tech_stack"]:
+        parsed["tech_stack"].setdefault(key, [])
+        if not isinstance(parsed["tech_stack"][key], list):
+            parsed["tech_stack"][key] = []
+    for key in [
+        "responsibilities",
+        "required_skills",
+        "nice_to_have",
+        "application_requirements",
+        "work_authorization_signals",
+        "risk_flags",
+    ]:
+        parsed[key] = _safe_list(parsed.get(key))
+    return parsed
+
+
+async def parse_career_job(
+    raw_job_description: str,
+    company_name: str | None,
+    role_title: str | None,
+    location: str | None,
+    candidate_profile: dict | None,
+    interview_language: str,
+) -> dict:
+    if not raw_job_description.strip():
+        return _fallback_parsed_job(company_name, role_title, location, interview_language)
+
+    output_language = "Chinese" if interview_language == "zh" else "English"
+    prompt = f"""Parse this internship or early-career job posting.
+Return ONLY strict JSON. No markdown.
+Use {output_language} for summary and list content.
+
+Rules:
+- Extract facts from the JD when present.
+- Infer cautiously only when strongly implied.
+- Use "unknown" when unsure.
+- Do not invent deadlines.
+- Do not provide immigration or legal advice; surface work authorization text as signals only.
+- employment_type must be one of: internship, co-op, new_grad, full_time, unknown.
+- domain must be one of: backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, mobile, general.
+- ats_or_platform must be one of: greenhouse, lever, workday, linkedin, indeed, company_site, unknown.
+
+Optional candidate profile context:
+{_json_dumps(candidate_profile or {})}
+
+Provided company_name: {company_name or ""}
+Provided role_title: {role_title or ""}
+Provided location: {location or ""}
+
+Job description:
+{raw_job_description}
+
+JSON schema:
+{{
+  "company_name": string | null,
+  "role_title": string | null,
+  "location": string | null,
+  "employment_type": "internship" | "co-op" | "new_grad" | "full_time" | "unknown",
+  "term": string,
+  "domain": "backend" | "frontend" | "fullstack" | "fintech" | "payments" | "infra" | "cloud" | "devops" | "data" | "ml_ai" | "security" | "mobile" | "general",
+  "tech_stack": {{
+    "languages": string[],
+    "frontend": string[],
+    "backend": string[],
+    "databases": string[],
+    "cloud_devops": string[],
+    "ai_tools": string[],
+    "testing": string[],
+    "other": string[]
+  }},
+  "responsibilities": string[],
+  "required_skills": string[],
+  "nice_to_have": string[],
+  "application_requirements": string[],
+  "deadline": string | null,
+  "work_authorization_signals": string[],
+  "ats_or_platform": "greenhouse" | "lever" | "workday" | "linkedin" | "indeed" | "company_site" | "unknown",
+  "summary": string,
+  "risk_flags": string[]
+}}"""
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=2200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        parsed = _extract_json_object(response.choices[0].message.content)
+    except Exception:
+        parsed = _fallback_parsed_job(company_name, role_title, location, interview_language)
+    return _normalize_parsed_job(parsed, company_name, role_title, location, interview_language)
+
+
+def _fallback_fit_score(language: str) -> dict:
+    if language == "zh":
+        return {
+            "overall_score": 0,
+            "priority": "unknown",
+            "summary": "需要候选人资料和已解析 JD 后才能生成可靠匹配度。",
+            "breakdown": {
+                "role_match": 0,
+                "tech_stack_match": 0,
+                "location_match": 0,
+                "experience_level_match": 0,
+                "project_relevance": 0,
+                "application_risk": 0,
+            },
+            "matched_strengths": [],
+            "gaps": ["信息不足"],
+            "recommended_resume_keywords": [],
+            "recommended_projects_to_highlight": [],
+            "next_action": "needs_more_info",
+        }
+    return {
+        "overall_score": 0,
+        "priority": "unknown",
+        "summary": "Add a candidate profile and parsed JD before generating a reliable fit score.",
+        "breakdown": {
+            "role_match": 0,
+            "tech_stack_match": 0,
+            "location_match": 0,
+            "experience_level_match": 0,
+            "project_relevance": 0,
+            "application_risk": 0,
+        },
+        "matched_strengths": [],
+        "gaps": ["Insufficient information"],
+        "recommended_resume_keywords": [],
+        "recommended_projects_to_highlight": [],
+        "next_action": "needs_more_info",
+    }
+
+
+def _normalize_fit_score(score: dict, language: str) -> dict:
+    fallback = _fallback_fit_score(language)
+    for key, value in fallback.items():
+        score.setdefault(key, value)
+    try:
+        score["overall_score"] = max(0, min(100, int(score.get("overall_score", 0))))
+    except (TypeError, ValueError):
+        score["overall_score"] = 0
+    score["priority"] = score.get("priority") if score.get("priority") in ["high", "medium", "low", "unknown"] else "unknown"
+    score["next_action"] = score.get("next_action") if score.get("next_action") in [
+        "apply_now",
+        "tailor_resume",
+        "research_company",
+        "skip",
+        "needs_more_info",
+    ] else "needs_more_info"
+    breakdown = score.get("breakdown") if isinstance(score.get("breakdown"), dict) else {}
+    for key in fallback["breakdown"]:
+        try:
+            breakdown[key] = max(0, min(100, int(breakdown.get(key, 0))))
+        except (TypeError, ValueError):
+            breakdown[key] = 0
+    score["breakdown"] = breakdown
+    for key in [
+        "matched_strengths",
+        "gaps",
+        "recommended_resume_keywords",
+        "recommended_projects_to_highlight",
+    ]:
+        score[key] = _safe_list(score.get(key))
+    return score
+
+
+async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_language: str) -> dict:
+    if not parsed_job or not candidate_profile:
+        return _fallback_fit_score(interview_language)
+
+    output_language = "Chinese" if interview_language == "zh" else "English"
+    prompt = f"""Compare this parsed job against the candidate profile and produce a practical internship fit score.
+Return ONLY strict JSON. No markdown.
+Use {output_language} for all user-visible content.
+
+Rules:
+- High score does not guarantee an interview.
+- Low score does not automatically mean skip.
+- Be conservative and practical.
+- Penalize unclear seniority mismatch.
+- Penalize obvious full-time roles if the candidate targets internships.
+- Reward strong project and tech overlap.
+- Reward location or remote compatibility.
+- Surface work authorization uncertainty as a risk flag, not a legal conclusion.
+
+Parsed job:
+{_json_dumps(parsed_job)}
+
+Candidate profile:
+{_json_dumps(candidate_profile)}
+
+JSON schema:
+{{
+  "overall_score": <int 0-100>,
+  "priority": "high" | "medium" | "low",
+  "summary": string,
+  "breakdown": {{
+    "role_match": <int 0-100>,
+    "tech_stack_match": <int 0-100>,
+    "location_match": <int 0-100>,
+    "experience_level_match": <int 0-100>,
+    "project_relevance": <int 0-100>,
+    "application_risk": <int 0-100>
+  }},
+  "matched_strengths": string[],
+  "gaps": string[],
+  "recommended_resume_keywords": string[],
+  "recommended_projects_to_highlight": string[],
+  "next_action": "apply_now" | "tailor_resume" | "research_company" | "skip" | "needs_more_info"
+}}"""
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=2200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        score = _extract_json_object(response.choices[0].message.content)
+    except Exception:
+        score = _fallback_fit_score(interview_language)
+    return _normalize_fit_score(score, interview_language)

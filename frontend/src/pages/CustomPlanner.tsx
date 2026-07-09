@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import LanguageControls from '../components/LanguageControls';
+import MainNav from '../components/MainNav';
 import { analyzeJD, createCustomSession, type BlueprintQuestion, type InterviewBlueprint, type JDProfile } from '../lib/api';
 import { useI18n } from '../i18n/useI18n';
 
@@ -31,11 +32,13 @@ function FocusList({ title, items }: { title: string; items: string[] }) {
 export default function CustomPlanner() {
   const { t, interviewLanguage, setInterviewLanguage } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
+  const prepared = location.state as { profile?: JDProfile; blueprint?: InterviewBlueprint } | null;
   const [companyName, setCompanyName] = useState('');
   const [roleTitle, setRoleTitle] = useState('');
   const [jobDescription, setJobDescription] = useState('');
-  const [profile, setProfile] = useState<JDProfile | null>(null);
-  const [blueprint, setBlueprint] = useState<InterviewBlueprint | null>(null);
+  const [profile, setProfile] = useState<JDProfile | null>(prepared?.profile || null);
+  const [blueprint, setBlueprint] = useState<InterviewBlueprint | null>(prepared?.blueprint || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ackShort, setAckShort] = useState(false);
@@ -92,9 +95,7 @@ export default function CustomPlanner() {
           <h1 className="wordmark">{t('designBoard')}</h1>
           <p className="tagline">{t('customInterviewFull')}</p>
         </div>
-        <nav className="nav-links">
-          <button className="btn-text" onClick={() => navigate('/')}>{t('home')}</button>
-        </nav>
+        <MainNav />
       </header>
 
       <LanguageControls />
