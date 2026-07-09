@@ -1,21 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import LanguageControls from '../components/LanguageControls';
 import QuestionGrid from '../components/QuestionGrid';
 import type { Question, SessionData } from '../lib/api';
 import { getQuestions, listSessions } from '../lib/api';
+import { useI18n } from '../i18n/useI18n';
 
 type DifficultyFilter = 'All' | 'Easy' | 'Medium' | 'Hard';
 
-const difficultyColor: Record<string, string> = {
-  Easy: 'var(--easy)',
-  Medium: 'var(--medium)',
-  Hard: 'var(--hard)',
-};
-
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, language: string): string {
   if (!iso) return '-';
   const d = new Date(iso);
-  return d.toLocaleDateString('en-US', {
+  return d.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
   });
@@ -39,6 +35,7 @@ export default function Home() {
   const [filter, setFilter] = useState<DifficultyFilter>('All');
   const [recentSessions, setRecentSessions] = useState<SessionData[]>([]);
   const navigate = useNavigate();
+  const { t, uiLanguage } = useI18n();
 
   useEffect(() => {
     getQuestions().then(setQuestions).catch(console.error);
@@ -53,29 +50,47 @@ export default function Home() {
       : questions.filter((q) => q.difficulty === filter);
 
   const filters: DifficultyFilter[] = ['All', 'Easy', 'Medium', 'Hard'];
+  const filterLabel = (f: DifficultyFilter) => {
+    if (f === 'All') return t('all');
+    if (f === 'Easy') return t('easy');
+    if (f === 'Medium') return t('medium');
+    return t('hard');
+  };
 
   return (
     <div className="home">
       <header className="home-header">
         <div className="logo-area">
-          <h1 className="wordmark">DesignBoard</h1>
-          <p className="tagline">System Design Interview Simulator</p>
+          <h1 className="wordmark">{t('designBoard')}</h1>
+          <p className="tagline">{t('systemDesignPractice')}</p>
         </div>
         <nav className="nav-links">
           <button className="btn-text" onClick={() => navigate('/history')}>
-            History →
+            {t('history')} -&gt;
           </button>
         </nav>
       </header>
 
-      <div className="filter-tabs">
+      <LanguageControls />
+
+      <section className="custom-entry">
+        <div>
+          <h2>{t('customInterviewFromJd')}</h2>
+          <p>{t('pasteJobDescription')}</p>
+        </div>
+        <button className="btn-filled" onClick={() => navigate('/custom')}>
+          {t('generateInterviewPlan')}
+        </button>
+      </section>
+
+      <div className="filter-tabs" aria-label={t('difficulty')}>
         {filters.map((f) => (
           <button
             key={f}
             className={`filter-tab ${filter === f ? 'active' : ''}`}
             onClick={() => setFilter(f)}
           >
-            {f}
+            {filterLabel(f)}
           </button>
         ))}
       </div>
@@ -84,13 +99,14 @@ export default function Home() {
 
       {recentSessions.length > 0 && (
         <section className="recent-sessions">
-          <h2 className="recent-title">Recent Sessions</h2>
+          <h2 className="recent-title">{t('recentSessions')}</h2>
           <table className="recent-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Question</th>
-                <th>Score</th>
+                <th>{t('date')}</th>
+                <th>{t('question')}</th>
+                <th>{t('type')}</th>
+                <th>{t('score')}</th>
               </tr>
             </thead>
             <tbody>
@@ -100,13 +116,14 @@ export default function Home() {
                   className="recent-row"
                   onClick={() => navigate(`/interview/${s.id}`)}
                 >
-                  <td>{formatDate(s.started_at)}</td>
-                  <td>{s.question_title}</td>
+                  <td>{formatDate(s.started_at, uiLanguage)}</td>
+                  <td>{s.custom_question_title || s.question_title}</td>
+                  <td>{s.session_type === 'jd_tailored' ? t('jdTailored') : t('builtIn')}</td>
                   <td>
                     {s.status === 'completed' ? (
                       <ScoreDot total={s.score_total} />
                     ) : (
-                      <span className="status-active">In Progress</span>
+                      <span className="status-active">{t('inProgress')}</span>
                     )}
                   </td>
                 </tr>

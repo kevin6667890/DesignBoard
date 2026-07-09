@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as SQLSession
 
 from database import get_db
-from models import Session, Message
+from models import InterviewBlueprint, JDProfile, Session, Message
+from routers.jd import blueprint_to_dict, profile_to_dict
 from routers.questions import DIFFICULTY_MAP, TITLE_MAP
 from services.ai_service import generate_opening_message, stream_ai_response, evaluate_session
 
@@ -16,7 +17,13 @@ router = APIRouter()
 
 
 class CreateSessionRequest(BaseModel):
-    question_id: str
+    question_id: str | None = None
+    interview_language: Literal["en", "zh"] = "en"
+    profile_id: int | None = None
+    blueprint_id: int | None = None
+    custom_question_title: str | None = None
+    custom_question_context: dict | None = None
+    difficulty: str | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -37,11 +44,19 @@ def _fmt_dt(dt) -> str | None:
 
 
 def _session_to_dict(session: Session) -> dict:
+    profile = profile_to_dict(session.profile) if session.profile else None
     return {
         "id": session.id,
         "question_id": session.question_id,
         "question_title": session.question_title,
         "difficulty": session.difficulty,
+        "interview_language": getattr(session, "interview_language", "en") or "en",
+        "session_type": getattr(session, "session_type", "built_in") or "built_in",
+        "profile_id": session.profile_id,
+        "blueprint_id": session.blueprint_id,
+        "custom_question_title": session.custom_question_title,
+        "custom_question_context": json.loads(session.custom_question_context) if session.custom_question_context else None,
+        "profile": profile,
         "started_at": _fmt_dt(session.started_at),
         "ended_at": _fmt_dt(session.ended_at),
         "duration_seconds": session.duration_seconds,
@@ -54,6 +69,7 @@ def _session_to_dict(session: Session) -> dict:
         "score_total": session.score_total,
         "missed_points": json.loads(session.missed_points) if session.missed_points else None,
         "summary": session.summary,
+        "role_fit_summary": session.role_fit_summary,
     }
 
 
@@ -71,24 +87,48 @@ def _message_to_dict(message: Message) -> dict:
 
 @router.post("/sessions")
 async def create_session(req: CreateSessionRequest, db: SQLSession = Depends(get_db)):
-    question_id = req.question_id
-    if question_id not in DIFFICULTY_MAP:
-        raise HTTPException(status_code=404, detail="Question not found")
+    is_custom = bool(req.custom_question_title or req.profile_id or req.blueprint_id)
+    profile = None
+    blueprint = None
 
-    difficulty = DIFFICULTY_MAP[question_id]
-    title = TITLE_MAP[question_id]
+    if is_custom:
+        if not req.custom_question_title:
+            raise HTTPException(status_code=400, detail="Custom question title is required")
+        if req.profile_id:
+            profile = db.query(JDProfile).filter(JDProfile.id == req.profile_id).first()
+            if not profile:
+                raise HTTPException(status_code=404, detail="Profile not found")
+        if req.blueprint_id:
+            blueprint = db.query(InterviewBlueprint).filter(InterviewBlueprint.id == req.blueprint_id).first()
+            if not blueprint:
+                raise HTTPException(status_code=404, detail="Blueprint not found")
+        question_id = f"custom-{req.blueprint_id or 'jd'}"
+        difficulty = req.difficulty or "Medium"
+        title = req.custom_question_title
+    else:
+        question_id = req.question_id
+        if not question_id or question_id not in DIFFICULTY_MAP:
+            raise HTTPException(status_code=404, detail="Question not found")
+        difficulty = DIFFICULTY_MAP[question_id]
+        title = TITLE_MAP[question_id]
 
     session = Session(
         question_id=question_id,
         question_title=title,
         difficulty=difficulty,
+        interview_language=req.interview_language,
+        session_type="jd_tailored" if is_custom else "built_in",
+        profile_id=req.profile_id if is_custom else None,
+        blueprint_id=req.blueprint_id if is_custom else None,
+        custom_question_title=req.custom_question_title if is_custom else None,
+        custom_question_context=json.dumps(req.custom_question_context, ensure_ascii=False) if req.custom_question_context else None,
         status="active",
     )
     db.add(session)
     db.commit()
     db.refresh(session)
 
-    opening_text = await generate_opening_message(title)
+    opening_text = await generate_opening_message(title, req.interview_language)
 
     message = Message(
         session_id=session.id,
@@ -103,6 +143,13 @@ async def create_session(req: CreateSessionRequest, db: SQLSession = Depends(get
         "session": _session_to_dict(session),
         "opening_message": _message_to_dict(message),
     }
+
+
+def _session_context(session: Session) -> tuple[dict | None, dict | None, list]:
+    profile = profile_to_dict(session.profile) if session.profile else None
+    blueprint = blueprint_to_dict(session.blueprint) if session.blueprint else None
+    scoring_focus = blueprint.get("scoring_focus", []) if blueprint else []
+    return profile, blueprint, scoring_focus
 
 
 @router.get("/sessions")
@@ -157,7 +204,15 @@ async def send_message(session_id: int, req: SendMessageRequest, db: SQLSession 
     # We need to pass db reference to the streaming generator to save the final message
     async def event_stream():
         full_response = ""
-        async for chunk in stream_ai_response(history, req.emotion_label):
+        profile, blueprint, _ = _session_context(session)
+        async for chunk in stream_ai_response(
+            history,
+            req.emotion_label,
+            session.interview_language,
+            profile,
+            blueprint,
+            session.custom_question_context,
+        ):
             full_response += chunk
             yield f"data: {json.dumps({'delta': chunk, 'done': False})}\n\n"
 
@@ -212,7 +267,8 @@ async def end_session(session_id: int, db: SQLSession = Depends(get_db)):
 
     # Get evaluation
     try:
-        evaluation = await evaluate_session(transcript)
+        _, _, scoring_focus = _session_context(session)
+        evaluation = await evaluate_session(transcript, session.interview_language, scoring_focus)
         session.score_requirements = evaluation.get("requirements_clarification")
         session.score_components = evaluation.get("system_components")
         session.score_scalability = evaluation.get("scalability")
@@ -228,6 +284,7 @@ async def end_session(session_id: int, db: SQLSession = Depends(get_db)):
         session.score_total = total
         session.missed_points = json.dumps(evaluation.get("missed_points", []))
         session.summary = evaluation.get("summary", "")
+        session.role_fit_summary = evaluation.get("role_fit_summary")
     except Exception as e:
         # If evaluation fails, set default scores
         session.score_requirements = 0
@@ -238,6 +295,7 @@ async def end_session(session_id: int, db: SQLSession = Depends(get_db)):
         session.score_total = 0
         session.missed_points = json.dumps([])
         session.summary = "Evaluation failed. Please try again."
+        session.role_fit_summary = None
 
     db.commit()
     db.refresh(session)

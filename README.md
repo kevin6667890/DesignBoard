@@ -19,6 +19,8 @@ Python · FastAPI · React · TypeScript · SQLite · DeepSeek API · face-api.j
 - **Voice Interaction** - Push-to-talk via Web Speech API, plus browser-native TTS for Alex responses.
 - **Emotion-Aware Follow-ups** - face-api.js detects candidate state and passes hidden context into the AI prompt.
 - **Real System Design Practice** - 16 curated prompts across Easy, Medium, and Hard difficulty.
+- **Bilingual App Support** - English and Chinese UI controls are separate from the interview language used by Alex and scorecards.
+- **JD-Tailored Interview Planner** - Paste a job description to generate a role profile, interview blueprint, and start a custom system design interview.
 - **Automated Scorecards** - Evaluates Requirements, Components, Scalability, Data Modeling, and Communication.
 - **Session History** - SQLite-backed interview records with scorecard review.
 
@@ -56,19 +58,29 @@ Client-side browser APIs handle voice input, temporary speech output, webcam pre
 
 ## Project Status
 
-DesignBoard currently supports local-first interview simulation with AI streaming, voice input, browser TTS, webcam emotion detection, persistent session history, and automated scorecards.
+DesignBoard currently supports local-first interview simulation with AI streaming, voice input, browser TTS, webcam emotion detection, persistent session history, automated scorecards, bilingual UI/interview language controls, and JD-tailored system design interviews.
 
-Next planned feature: JD-tailored interview generation, where users paste a job description and DesignBoard generates a company/role-specific interview blueprint.
+## Bilingual App Support
 
-## Planned: JD-Tailored Interview Mode
+DesignBoard supports English and Chinese for actual app usage. UI language and interview language are separate settings:
 
-This mode is planned, not currently implemented.
+- UI language controls navigation, labels, buttons, history, and planner screens.
+- Interview language controls Alex's interview prompts, browser TTS voice preference, generated JD blueprint content, and scorecard language.
+- Built-in question titles include Chinese display fields with English fallback, so existing question data and old sessions remain compatible.
 
-- Paste a job description.
-- Extract company, role, seniority, tech stack, domain, and responsibilities.
-- Generate a personalized interview blueprint.
-- Create role-specific coding, CS fundamentals, system design, domain deep-dive, and behavioral questions.
-- Fall back to JD-only analysis if no public company information is available.
+The README and GitHub presentation remain English.
+
+## JD-Tailored Interview Planner
+
+JD mode is implemented as a local-first, JD-only flow:
+
+- Paste a job description, with optional company name and role title.
+- DeepSeek extracts company, role, seniority, domain, tech stack, responsibilities, required skills, and likely interview focus.
+- DesignBoard generates an interview blueprint with coding, CS fundamentals, system design, domain deep-dive, behavioral, and scoring focus sections.
+- Recommended custom system design questions can start an interview immediately.
+- Custom sessions carry JD profile and blueprint context into Alex's hidden prompt, and scorecards can include Role Fit / JD Alignment.
+
+Company web research is planned but not implemented. Coding/editor rounds are planned but not implemented.
 
 ## Quick Start
 

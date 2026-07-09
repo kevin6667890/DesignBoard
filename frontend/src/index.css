@@ -107,6 +107,88 @@ textarea {
   align-items: center;
 }
 
+.language-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.language-control {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.language-label,
+.field-label {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.language-help,
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.segmented-control {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.segmented-control button {
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.segmented-control button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented-control button.active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.segmented-control.inline {
+  width: max-content;
+}
+
+.custom-entry {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 18px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--surface);
+}
+
+.custom-entry h2 {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.custom-entry p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 /* ===== FILTER TABS ===== */
 .filter-tabs {
   display: flex;
@@ -1120,4 +1202,168 @@ textarea {
   flex-direction: column;
   gap: 12px;
   align-items: center;
+}
+
+/* ===== JD PLANNER ===== */
+.planner-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.planner-form,
+.profile-panel,
+.blueprint-panel,
+.question-recommendations {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 18px;
+}
+
+.planner-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.planner-form input,
+.jd-textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+  padding: 10px 12px;
+}
+
+.planner-form input::placeholder,
+.jd-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.jd-textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.form-error {
+  color: var(--medium);
+  font-size: 13px;
+}
+
+.blueprint-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-panel h2,
+.blueprint-panel h2,
+.question-recommendations h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+
+.profile-panel h3,
+.blueprint-section h3,
+.custom-question-card h3 {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px 14px;
+  margin-bottom: 16px;
+}
+
+.profile-grid span {
+  color: var(--text-muted);
+}
+
+.profile-grid strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 3px 7px;
+}
+
+.blueprint-summary {
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.blueprint-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.blueprint-section ul,
+.custom-question-card ul {
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+.custom-question-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.custom-question-card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.custom-question-card p {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) {
+  .language-controls,
+  .form-grid,
+  .blueprint-grid,
+  .custom-question-list {
+    grid-template-columns: 1fr;
+  }
+
+  .language-control,
+  .custom-entry {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

@@ -10,6 +10,7 @@ import VideoMirror from '../components/interview/VideoMirror';
 import { usePushToTalk } from '../hooks/usePushToTalk';
 import { useTTS } from '../hooks/useTTS';
 import type { EmotionLabel } from '../hooks/useEmotionDetection';
+import { useI18n } from '../i18n/useI18n';
 
 type InputMode = 'text' | 'voice';
 
@@ -29,6 +30,7 @@ export default function Interview() {
   const [notFound, setNotFound] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [stableEmotion, setStableEmotion] = useState<EmotionLabel>('neutral');
+  const { t, interviewLanguage } = useI18n();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endedRef = useRef(false);
@@ -36,7 +38,7 @@ export default function Interview() {
   const isStreamingRef = useRef(false);
   const stableEmotionRef = useRef<EmotionLabel>('neutral');
 
-  const tts = useTTS();
+  const tts = useTTS({ language: session?.interview_language ?? interviewLanguage });
 
   useEffect(() => {
     sessionRef.current = session;
@@ -210,8 +212,8 @@ export default function Interview() {
   if (notFound) {
     return (
       <div className="interview-loading">
-        <p style={{ marginBottom: 12 }}>Session not found.</p>
-        <button className="btn-text" onClick={() => navigate('/')}>Back to Home</button>
+        <p style={{ marginBottom: 12 }}>{t('sessionNotFound')}</p>
+        <button className="btn-text" onClick={() => navigate('/')}>{t('backToHome')}</button>
       </div>
     );
   }
@@ -219,7 +221,7 @@ export default function Interview() {
   if (!session) {
     return (
       <div className="interview-loading">
-        <p>Loading interview...</p>
+        <p>{t('loading')}</p>
       </div>
     );
   }
@@ -240,22 +242,22 @@ export default function Interview() {
 
   const voiceStatusMessage = (() => {
     if (!pushToTalk.isSupported || pushToTalk.status === 'unsupported') {
-      return 'Voice input is not supported in this browser. Use Chrome or Edge, or type your answer below.';
+      return t('voiceUnsupported');
     }
-    if (isStreaming) return 'Processing answer...';
-    if (pushToTalk.isListening) return 'Listening... release to submit.';
+    if (isStreaming) return t('processingAnswer');
+    if (pushToTalk.isListening) return t('listeningRelease');
     if (pushToTalk.status === 'denied') {
-      return 'Microphone permission denied. Enable microphone access or type your answer below.';
+      return t('micDenied');
     }
-    if (pushToTalk.status === 'error') return 'Voice input failed. Type your answer below.';
-    return 'Hold the button or hold Space to speak.';
+    if (pushToTalk.status === 'error') return t('voiceFailed');
+    return t('holdToSpeak');
   })();
 
   return (
     <div className="interview-room">
       <header className="room-topbar">
         <div className="room-brand">
-          <span className="wordmark">DesignBoard</span>
+          <span className="wordmark">{t('designBoard')}</span>
           <span
             className="difficulty-tag"
             style={{ color: difficultyColor[session.difficulty] || 'var(--text-secondary)' }}
@@ -265,7 +267,7 @@ export default function Interview() {
         </div>
 
         <div className="room-question">
-          <span className="room-question-label">Interview</span>
+          <span className="room-question-label">{t('interview')}</span>
           <h1>{session.question_title}</h1>
         </div>
 
@@ -275,21 +277,21 @@ export default function Interview() {
           )}
           {session.status === 'active' && (
             <button className="end-btn compact" onClick={() => setShowConfirm(true)} disabled={ending}>
-              {ending ? 'Scoring...' : 'End Interview'}
+              {ending ? t('scoring') : t('endInterview')}
             </button>
           )}
-          <button className="btn-text" onClick={() => navigate('/')}>Home</button>
+          <button className="btn-text" onClick={() => navigate('/')}>{t('home')}</button>
         </div>
       </header>
 
-      {timeUp && <div className="time-up-banner room-banner">Time is up. Your interview has ended.</div>}
+      {timeUp && <div className="time-up-banner room-banner">{t('timeUp')}</div>}
 
       {showConfirm && (
         <div className="confirm-dialog room-confirm">
-          <p>End this interview and generate your scorecard?</p>
+          <p>{t('endConfirm')}</p>
           <div className="confirm-actions">
-            <button className="btn-text" onClick={() => setShowConfirm(false)}>Cancel</button>
-            <button className="btn-filled" onClick={handleEnd}>Confirm</button>
+            <button className="btn-text" onClick={() => setShowConfirm(false)}>{t('cancel')}</button>
+            <button className="btn-filled" onClick={handleEnd}>{t('confirm')}</button>
           </div>
         </div>
       )}
@@ -297,7 +299,7 @@ export default function Interview() {
       <main className="room-main">
         <section className="alex-panel" aria-label="Alex interviewer">
           <div className="panel-header">
-            <span>Alex</span>
+            <span>{t('alex')}</span>
             <span>{avatarState}</span>
           </div>
           <div className="avatar-stage">
@@ -305,10 +307,10 @@ export default function Interview() {
           </div>
           <div className="voice-controls">
             <button className="btn-text small" onClick={tts.toggleMuted} disabled={!tts.isSupported}>
-              {tts.muted ? 'Unmute Alex' : 'Mute Alex'}
+              {tts.muted ? t('unmute') : t('mute')}
             </button>
             {tts.isSpeaking && (
-              <button className="btn-text small" onClick={tts.cancel}>Skip voice</button>
+              <button className="btn-text small" onClick={tts.cancel}>{t('skipVoice')}</button>
             )}
             {!tts.isSupported && <span className="fallback-note">speech synthesis unavailable</span>}
           </div>
@@ -324,8 +326,8 @@ export default function Interview() {
       <section className="room-bottom">
         <div className="transcript-panel">
           <div className="panel-header">
-            <span>Recent transcript</span>
-            <span>candidate state: {stableEmotion}</span>
+            <span>{t('recentTranscript')}</span>
+            <span>{t('candidateState')}: {stableEmotion}</span>
           </div>
           <MessageThread messages={messages} streamingText={streamingText} isStreaming={isStreaming} />
         </div>
@@ -340,7 +342,7 @@ export default function Interview() {
                 onPointerLeave={pushToTalk.stopListening}
                 disabled={!pushToTalk.isSupported || isStreaming}
               >
-                {pushToTalk.isListening ? 'Listening...' : 'Hold to Talk'}
+                {pushToTalk.isListening ? t('listeningRelease') : t('holdToTalk')}
               </button>
               <span className="voice-status">{voiceStatusMessage}</span>
             </div>
@@ -349,14 +351,14 @@ export default function Interview() {
               <div className="interim-transcript">{pushToTalk.interimTranscript}</div>
             )}
             {pushToTalk.error && pushToTalk.status === 'error' && (
-              <div className="fallback-note">Voice input failed. Type your answer below.</div>
+              <div className="fallback-note">{t('voiceFailed')}</div>
             )}
 
             <div className="input-row">
               <textarea
                 ref={textareaRef}
                 className="message-input"
-                placeholder="Fallback text answer..."
+                placeholder={t('fallbackPlaceholder')}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -364,10 +366,10 @@ export default function Interview() {
                 rows={1}
               />
               <button className="send-btn" onClick={handleSend} disabled={isStreaming || !input.trim()}>
-                Send answer
+                {t('sendAnswer')}
               </button>
             </div>
-            {isStreaming && <div className="streaming-label">Alex is responding...</div>}
+            {isStreaming && <div className="streaming-label">{t('alexResponding')}</div>}
           </div>
         )}
       </section>

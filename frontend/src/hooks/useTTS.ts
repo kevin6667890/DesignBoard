@@ -3,9 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 interface UseTTSOptions {
   onStart?: () => void;
   onEnd?: () => void;
+  language?: 'en' | 'zh';
 }
 
-export function useTTS({ onStart, onEnd }: UseTTSOptions = {}) {
+export function useTTS({ onStart, onEnd, language = 'en' }: UseTTSOptions = {}) {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [isSupported, setIsSupported] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -36,9 +37,12 @@ export function useTTS({ onStart, onEnd }: UseTTSOptions = {}) {
     utterance.rate = 0.96;
     utterance.pitch = 0.92;
     utterance.volume = 1;
+    utterance.lang = language === 'zh' ? 'zh-CN' : 'en-US';
 
     const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find((voice) => voice.lang.startsWith('en') && /male|daniel|david|mark/i.test(voice.name));
+    const preferred = language === 'zh'
+      ? voices.find((voice) => /zh|cmn|yue/i.test(voice.lang))
+      : voices.find((voice) => voice.lang.startsWith('en') && /male|daniel|david|mark/i.test(voice.name));
     if (preferred) utterance.voice = preferred;
 
     utterance.onstart = () => {
@@ -58,7 +62,7 @@ export function useTTS({ onStart, onEnd }: UseTTSOptions = {}) {
 
     utteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
-  }, [muted, onEnd, onStart]);
+  }, [language, muted, onEnd, onStart]);
 
   const toggleMuted = useCallback(() => {
     setMuted((current) => {
