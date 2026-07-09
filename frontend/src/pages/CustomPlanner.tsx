@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import LanguageControls from '../components/LanguageControls';
 import MainNav from '../components/MainNav';
+import BackLink from '../components/ui/BackLink';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ErrorState from '../components/ui/ErrorState';
 import { analyzeJD, createCustomSession, type BlueprintQuestion, type InterviewBlueprint, type JDProfile } from '../lib/api';
 import { useI18n } from '../i18n/useI18n';
 
@@ -42,6 +45,7 @@ export default function CustomPlanner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ackShort, setAckShort] = useState(false);
+  const [startingQuestion, setStartingQuestion] = useState<string | null>(null);
 
   const isShort = jobDescription.trim().length > 0 && jobDescription.trim().length < 120;
 
@@ -58,6 +62,8 @@ export default function CustomPlanner() {
     }
     setError('');
     setLoading(true);
+    setProfile(null);
+    setBlueprint(null);
     try {
       const res = await analyzeJD({
         company_name: companyName.trim() || null,
@@ -77,15 +83,21 @@ export default function CustomPlanner() {
 
   const startInterview = async (question: BlueprintQuestion) => {
     if (!profile || !blueprint) return;
-    const res = await createCustomSession({
-      profile_id: profile.id,
-      blueprint_id: blueprint.id,
-      custom_question_title: question.title,
-      custom_question_context: question,
-      difficulty: question.difficulty,
-      interview_language: interviewLanguage,
-    });
-    navigate(`/interview/${res.session.id}`);
+    setStartingQuestion(question.title);
+    try {
+      const res = await createCustomSession({
+        profile_id: profile.id,
+        blueprint_id: blueprint.id,
+        custom_question_title: question.title,
+        custom_question_context: question,
+        difficulty: question.difficulty,
+        interview_language: interviewLanguage,
+      });
+      navigate(`/interview/${res.session.id}`);
+    } catch (err) {
+      console.error(err);
+      setStartingQuestion(null);
+    }
   };
 
   return (
@@ -98,27 +110,55 @@ export default function CustomPlanner() {
         <MainNav />
       </header>
 
+      <div className="page-back-row">
+        <BackLink to="/" label={t('backToPractice')} />
+      </div>
+
       <LanguageControls />
 
       <section className="planner-form">
         <div className="form-grid">
-          <input
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            placeholder={t('companyNameOptional')}
-          />
-          <input
-            value={roleTitle}
-            onChange={(e) => setRoleTitle(e.target.value)}
-            placeholder={t('roleTitleOptional')}
-          />
+          <label className="field-label" htmlFor="company-input">
+            {t('company')}
+            <input
+              id="company-input"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder={t('companyNameOptional')}
+            />
+          </label>
+          <label className="field-label" htmlFor="role-input">
+            {t('role')}
+            <input
+              id="role-input"
+              value={roleTitle}
+              onChange={(e) => setRoleTitle(e.target.value)}
+              placeholder={t('roleTitleOptional')}
+            />
+          </label>
         </div>
         <label className="field-label">{t('interviewLanguage')}</label>
         <div className="segmented-control inline">
-          <button className={interviewLanguage === 'en' ? 'active' : ''} onClick={() => setInterviewLanguage('en')}>English</button>
-          <button className={interviewLanguage === 'zh' ? 'active' : ''} onClick={() => setInterviewLanguage('zh')}>中文</button>
+          <button
+            className={interviewLanguage === 'en' ? 'active' : ''}
+            onClick={() => setInterviewLanguage('en')}
+            aria-pressed={interviewLanguage === 'en'}
+          >
+            English
+          </button>
+          <button
+            className={interviewLanguage === 'zh' ? 'active' : ''}
+            onClick={() => setInterviewLanguage('zh')}
+            aria-pressed={interviewLanguage === 'zh'}
+          >
+            中文
+          </button>
         </div>
+        <label className="field-label" htmlFor="jd-textarea">
+          {t('jobDescription')} <span className="required-mark">*</span>
+        </label>
         <textarea
+          id="jd-textarea"
           className="jd-textarea"
           value={jobDescription}
           onChange={(e) => {
@@ -126,12 +166,23 @@ export default function CustomPlanner() {
             setAckShort(false);
           }}
           placeholder={t('pasteJobDescription')}
+          aria-required="true"
         />
-        {error && <div className="form-error">{error}</div>}
-        <button className="btn-filled" onClick={handleGenerate} disabled={loading || !jobDescription.trim()}>
-          {loading ? t('loading') : ackShort ? t('continue') : t('generateInterviewPlan')}
+        {error && <div className="form-error" role="alert">{error}</div>}
+        <button
+          className="btn-filled"
+          onClick={handleGenerate}
+          disabled={loading || !jobDescription.trim()}
+          aria-disabled={loading || !jobDescription.trim()}
+        >
+          {loading ? t('generatingBlueprint') : ackShort ? t('continue') : t('generateInterviewPlan')}
         </button>
+        {loading && <LoadingSpinner message={t('generatingBlueprint')} />}
       </section>
+
+      {error && !loading && !profile && (
+        <ErrorState message={error} />
+      )}
 
       {profile && blueprint && (
         <div className="blueprint-layout">
@@ -174,8 +225,13 @@ export default function CustomPlanner() {
                     <strong>{t('expectedTopics')}:</strong>
                     <Tags items={q.expected_topics} />
                   </div>
-                  <button className="btn-filled" onClick={() => startInterview(q)}>
-                    {t('startInterview')}
+                  <button
+                    className="btn-filled"
+                    onClick={() => startInterview(q)}
+                    disabled={startingQuestion !== null}
+                    aria-disabled={startingQuestion !== null}
+                  >
+                    {startingQuestion === q.title ? t('loading') : t('startInterview')}
                   </button>
                 </article>
               ))}

@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LanguageControls from '../components/LanguageControls';
 import MainNav from '../components/MainNav';
+import BackLink from '../components/ui/BackLink';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ErrorState from '../components/ui/ErrorState';
+import EmptyState from '../components/ui/EmptyState';
+import CopyButton from '../components/ui/CopyButton';
 import { getCandidateProfile, listCareerJobs, type CandidateProfile, type CareerJob } from '../lib/api';
 import { useI18n } from '../i18n/useI18n';
 
@@ -34,25 +39,23 @@ function SearchQueryGenerator() {
     ];
   }, [domain, keywords, location, remote, role, term]);
 
-  const copy = (text: string) => void navigator.clipboard?.writeText(text);
-
   return (
     <section className="career-panel">
       <h2>{t('searchQueryGenerator')}</h2>
       <div className="career-search-grid">
-        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder={t('targetRole')} />
-        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t('location')} />
-        <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t('term')} />
-        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder={t('domain')} />
-        <input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder={t('remotePreference')} />
-        <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={t('keywords')} />
+        <input id="sq-role" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t('targetRole')} aria-label={t('targetRole')} />
+        <input id="sq-location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t('location')} aria-label={t('location')} />
+        <input id="sq-term" value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t('term')} aria-label={t('term')} />
+        <input id="sq-domain" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder={t('domain')} aria-label={t('domain')} />
+        <input id="sq-remote" value={remote} onChange={(e) => setRemote(e.target.value)} placeholder={t('remotePreference')} aria-label={t('remotePreference')} />
+        <input id="sq-keywords" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={t('keywords')} aria-label={t('keywords')} />
       </div>
       <div className="query-list">
         {queries.map((q) => (
           <div className="query-row" key={q.label}>
             <strong>{q.label}</strong>
             <code>{q.query}</code>
-            <button className="btn-text small" onClick={() => copy(q.query)}>{t('copy')}</button>
+            <CopyButton text={q.query} label={t('copy')} copiedLabel={t('copied')} />
             {q.google && <a className="btn-text small" href={`https://www.google.com/search?q=${encodeURIComponent(q.query)}`} target="_blank" rel="noreferrer">{t('openGoogleSearch')}</a>}
           </div>
         ))}
@@ -66,13 +69,26 @@ export default function CareerHome() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
   const [jobs, setJobs] = useState<CareerJob[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [profileError, setProfileError] = useState(false);
 
   useEffect(() => {
-    getCandidateProfile().then(setProfile).catch(console.error);
-    listCareerJobs().then(setJobs).catch(console.error);
+    getCandidateProfile()
+      .then(setProfile)
+      .catch(() => setProfileError(true))
+      .finally(() => setLoadingProfile(false));
+    listCareerJobs()
+      .then(setJobs)
+      .catch(console.error)
+      .finally(() => setLoadingJobs(false));
   }, []);
 
   const recentJobs = jobs.slice(0, 6);
+  const hasProfile = profile && (
+    (profile.target_roles && profile.target_roles.length > 0) ||
+    (profile.target_locations && profile.target_locations.length > 0)
+  );
 
   return (
     <div className="career-page">
@@ -86,9 +102,15 @@ export default function CareerHome() {
       <LanguageControls />
 
       <div className="career-actions">
-        <button className="btn-filled" onClick={() => navigate('/career/jobs/new')}>{t('addJob')}</button>
-        <button className="btn-text" onClick={() => navigate('/career/jobs')}>{t('savedJobs')}</button>
-        <button className="btn-text" onClick={() => navigate('/career/profile')}>{t('editProfile')}</button>
+        <button className="btn-filled" onClick={() => navigate('/career/jobs/new')} id="career-add-job">
+          {t('addJob')}
+        </button>
+        <button className="btn-text" onClick={() => navigate('/career/jobs')}>
+          {t('savedJobs')}
+        </button>
+        <button className="btn-text" onClick={() => navigate('/career/profile')}>
+          {t('editProfile')}
+        </button>
       </div>
 
       <section className="career-panel">
@@ -96,11 +118,22 @@ export default function CareerHome() {
           <h2>{t('profileSummary')}</h2>
           <button className="btn-text small" onClick={() => navigate('/career/profile')}>{t('editProfile')}</button>
         </div>
-        <div className="profile-grid">
-          <span>{t('targetRoles')}</span><Tags items={profile?.target_roles || []} />
-          <span>{t('targetLocations')}</span><Tags items={profile?.target_locations || []} />
-          <span>{t('skills')}</span><Tags items={Object.values(profile?.skills || {}).flat()} />
-        </div>
+        {loadingProfile ? (
+          <LoadingSpinner message={t('loadingProfile')} inline />
+        ) : profileError ? (
+          <ErrorState message={t('failedToLoadProfile')} />
+        ) : !hasProfile ? (
+          <EmptyState
+            message={t('noProfileYet')}
+            action={{ label: t('setupProfile'), onClick: () => navigate('/career/profile') }}
+          />
+        ) : (
+          <div className="profile-grid">
+            <span>{t('targetRoles')}</span><Tags items={profile?.target_roles || []} />
+            <span>{t('targetLocations')}</span><Tags items={profile?.target_locations || []} />
+            <span>{t('skills')}</span><Tags items={Object.values(profile?.skills || {}).flat()} />
+          </div>
+        )}
       </section>
 
       <section className="career-panel">
@@ -108,10 +141,20 @@ export default function CareerHome() {
           <h2>{t('savedJobs')}</h2>
           <button className="btn-text small" onClick={() => navigate('/career/jobs')}>{t('view')}</button>
         </div>
-        {recentJobs.length ? (
+        {loadingJobs ? (
+          <LoadingSpinner message={t('loadingJobs')} inline />
+        ) : recentJobs.length ? (
           <div className="career-job-list">
             {recentJobs.map((job) => (
-              <div className="career-job-row" key={job.id} onClick={() => navigate(`/career/jobs/${job.id}`)}>
+              <div
+                className="career-job-row"
+                key={job.id}
+                onClick={() => navigate(`/career/jobs/${job.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(`/career/jobs/${job.id}`)}
+                aria-label={`${job.company_name || '-'} - ${job.role_title || t('needsJd')}`}
+              >
                 <strong>{job.company_name || '-'}</strong>
                 <span>{job.role_title || t('needsJd')}</span>
                 <span>{job.location || '-'}</span>
@@ -121,7 +164,10 @@ export default function CareerHome() {
             ))}
           </div>
         ) : (
-          <p className="muted">{t('noJobsYet')}</p>
+          <EmptyState
+            message={t('noJobsYet')}
+            action={{ label: t('addJob'), onClick: () => navigate('/career/jobs/new') }}
+          />
         )}
       </section>
 

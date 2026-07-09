@@ -101,7 +101,28 @@ Career Mode does not scrape LinkedIn, Indeed, Glassdoor, or protected platforms.
 ## Roadmap
 
 - v4 Career Mode is implemented.
+- v4.1 UX polish, navigation cleanup, and Playwright E2E testing is implemented.
 - Future: coding round, CS fundamentals round, company research, and resume tailoring.
+
+## Quality and E2E Testing
+
+Playwright E2E tests cover the following flows:
+
+- **Navigation** (`app-navigation.spec.ts`) — home page load, nav routing, language toggle between English and Chinese.
+- **Career Mode** (`career-mode.spec.ts`) — candidate profile creation and save, add job (URL-only and with JD), job tracker listing, job detail view, status editing, delete with confirmation.
+- **JD Planner** (`jd-planner.spec.ts`) — open planner, paste JD, generate blueprint (AI response mocked), start interview buttons.
+- **Interview Room** (`interview-room.spec.ts`) — room layout, Alex panel, transcript, typed answer submission, send button states, end interview confirmation.
+- **Responsive** (`responsive.spec.ts`) — desktop (1280px), tablet (768px), mobile (390px), and interview room at 900px/620px.
+
+AI-dependent flows (DeepSeek API) are mocked in E2E tests using Playwright route interception. No API key is required to run the test suite.
+
+Manual browser testing is still recommended for microphone push-to-talk, camera/emotion detection, and browser TTS (Alex voice).
+
+To run tests (requires dev server running on port 5173):
+```bash
+cd frontend
+npm run test:e2e
+```
 
 ## Quick Start
 

@@ -1532,3 +1532,352 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== V4.1 UX POLISH ===== */
+
+/* Nav active state */
+.nav-item {
+  position: relative;
+  padding-bottom: 2px;
+}
+
+.nav-active {
+  color: var(--text-primary) !important;
+}
+
+.nav-active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--text-primary);
+}
+
+/* Focus rings - keyboard visible */
+:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--text-secondary) !important;
+  outline: none;
+}
+
+/* Segmented control hover */
+.segmented-control button:hover:not(.active) {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.04);
+}
+
+/* ===== BACK LINK ===== */
+.back-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s;
+  padding: 4px 0;
+}
+
+.back-link:hover {
+  color: var(--text-primary);
+}
+
+.back-chevron {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.page-back-row {
+  margin-bottom: 16px;
+}
+
+/* ===== PAGE HEADER ===== */
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header-title {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.page-header-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.empty-state-msg {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ===== ERROR STATE ===== */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.error-state-msg {
+  color: var(--hard);
+  font-size: 13px;
+}
+
+/* ===== LOADING ===== */
+.loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px;
+  color: var(--text-secondary);
+}
+
+.loading-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.loading-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner-ring {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.spinner-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* ===== COPY BUTTON ===== */
+.copy-btn {
+  transition: color 0.15s;
+}
+
+.copy-btn.copied {
+  color: var(--easy) !important;
+}
+
+/* ===== STATUS BADGE ===== */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.badge-neutral { color: var(--text-secondary); border-color: var(--border); }
+.badge-success { color: var(--easy); border-color: var(--easy); background: rgba(74,222,128,0.07); }
+.badge-warning { color: var(--medium); border-color: var(--medium); background: rgba(250,204,21,0.07); }
+.badge-danger  { color: var(--hard); border-color: var(--hard); background: rgba(248,113,113,0.07); }
+.badge-info    { color: #60a5fa; border-color: #60a5fa; background: rgba(96,165,250,0.07); }
+
+/* ===== INFO BANNER ===== */
+.info-banner {
+  background: rgba(250,204,21,0.06);
+  border: 1px solid rgba(250,204,21,0.25);
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--medium);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* ===== DANGER ZONE ===== */
+.danger-zone {
+  border-color: rgba(248,113,113,0.2) !important;
+  margin-top: 8px;
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--hard);
+  color: var(--hard);
+  border-radius: 4px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-danger:hover {
+  background: rgba(248,113,113,0.1);
+}
+
+.danger-text {
+  color: var(--hard) !important;
+}
+
+.danger-text:hover {
+  color: var(--hard) !important;
+  opacity: 0.8;
+}
+
+/* ===== FORM ACTIONS ===== */
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* ===== JOB URL ROW ===== */
+.job-url-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* ===== REQUIRED / OPTIONAL MARKS ===== */
+.required-mark {
+  color: var(--hard);
+  font-size: 11px;
+}
+
+.optional-mark {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* ===== BTN-FILLED improvements ===== */
+.btn-filled:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.btn-filled:active:not(:disabled) {
+  opacity: 0.78;
+  transform: scale(0.99);
+}
+
+.btn-filled:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ===== BTN-TEXT improvements ===== */
+.btn-text:active:not(:disabled) {
+  opacity: 0.7;
+}
+
+.btn-text:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ===== CAREER TABLE ROW hover ===== */
+.career-table-row:hover {
+  background: var(--surface-2);
+}
+
+/* ===== CAREER JOB ROW hover ===== */
+.career-job-row:hover {
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
+/* ===== INTERVIEW ROOM send btn hover ===== */
+.send-btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.send-btn:active:not(:disabled) {
+  background: var(--border-hover);
+}
+
+/* ===== INTERVIEW LOADING improvements ===== */
+.interview-loading {
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ===== FIELD LABEL consistent style ===== */
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ===== Input/textarea focus ring ===== */
+.career-search-grid input:focus,
+.career-search-grid select:focus,
+.career-table-row input:focus,
+.career-table-row select:focus,
+.profile-form input:focus,
+.profile-form textarea:focus,
+.jd-textarea:focus,
+.planner-form input:focus,
+.message-input:focus {
+  border-color: var(--text-muted);
+}
+
+/* ===== Responsive back row ===== */
+@media (max-width: 760px) {
+  .page-back-row {
+    margin-bottom: 12px;
+  }
+}

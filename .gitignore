@@ -23,3 +23,10 @@ frontend/*.log
 *.egg-info/
 .DS_Store
 Thumbs.db
+claude.md
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/
