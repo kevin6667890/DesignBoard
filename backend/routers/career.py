@@ -1,5 +1,6 @@
 import json
 import re
+from io import BytesIO
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -7,14 +8,14 @@ from urllib.request import Request, urlopen
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as SQLSession
 
 from database import get_db
 from models import CandidateProfile, CareerJob, InterviewBlueprint, JDProfile
 from routers.jd import blueprint_to_dict, profile_to_dict
-from services.ai_service import analyze_jd, analyze_pasted_job_page, extract_job_leads, generate_blueprint, generate_job_search_plan, parse_career_job, score_career_job
+from services.ai_service import analyze_jd, analyze_pasted_job_page, analyze_resume, extract_job_leads, generate_blueprint, generate_job_search_plan, parse_career_job, score_career_job
 
 router = APIRouter()
 
@@ -48,15 +49,15 @@ class CareerJobRequest(BaseModel):
 
 
 class ParseJobRequest(BaseModel):
-    interview_language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class ScoreJobRequest(BaseModel):
-    interview_language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class PrepareInterviewRequest(BaseModel):
-    interview_language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 class SearchPlanRequest(BaseModel):
     target_role: str
@@ -67,7 +68,7 @@ class SearchPlanRequest(BaseModel):
     sources: list[str] = []
     remote_preference: Literal["remote", "hybrid", "onsite", "any"] = "any"
     experience_level: Literal["intern", "co-op", "new_grad", "any"] = "intern"
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class ExtractSearchRequest(BaseModel):
@@ -75,13 +76,13 @@ class ExtractSearchRequest(BaseModel):
     source_hint: str | None = "unknown"
     target_role: str | None = None
     locations: list[str] = []
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class FetchPublicRequest(BaseModel):
     urls: list[str]
     source_hint: str | None = "unknown"
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class JobLeadRequest(BaseModel):
@@ -102,7 +103,7 @@ class JobLeadRequest(BaseModel):
 class SaveLeadsRequest(BaseModel):
     leads: list[JobLeadRequest]
     parse_and_score: bool = False
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 def _loads(value: str | None, fallback):
@@ -194,6 +195,56 @@ def _job_to_dict(job: CareerJob) -> dict:
 
 def _active_profile(db: SQLSession) -> CandidateProfile | None:
     return db.query(CandidateProfile).order_by(CandidateProfile.id.asc()).first()
+
+
+def _has_profile_content(profile: dict) -> bool:
+    return bool(profile.get("name") or profile.get("target_roles") or profile.get("skills") or profile.get("projects"))
+
+
+def _unique_items(values: list) -> list:
+    result = []
+    seen = set()
+    for value in values:
+        key = json.dumps(value, ensure_ascii=False, sort_keys=True) if isinstance(value, dict) else str(value).strip().lower()
+        if value and key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+
+
+def _resume_to_profile_data(resume_profile: dict, existing: dict | None = None, merge: bool = False) -> dict:
+    existing = existing or _profile_to_dict(None)
+    skills = resume_profile.get("skills") if isinstance(resume_profile.get("skills"), dict) else {}
+    existing_skills = existing.get("skills") if isinstance(existing.get("skills"), dict) else {}
+    skill_keys = {"languages", "frontend", "backend", "databases", "cloud_devops", "ai_tools", "testing", "other"}
+    merged_skills = {
+        key: _unique_items((existing_skills.get(key) or []) + (skills.get(key) or [])) if merge else _unique_items(skills.get(key) or [])
+        for key in skill_keys
+    }
+    preferences = resume_profile.get("preferences") if isinstance(resume_profile.get("preferences"), dict) else {}
+    resume_preferences = {
+        **preferences,
+        "preferred_domains": resume_profile.get("preferred_domains") or preferences.get("preferred_domains") or [],
+        "search_keywords": resume_profile.get("search_keywords") or [],
+        "suggested_job_titles": resume_profile.get("suggested_job_titles") or [],
+        "strengths": resume_profile.get("strengths") or [],
+        "gaps": resume_profile.get("gaps") or [],
+        "experience": resume_profile.get("experience") or [],
+    }
+    existing_preferences = existing.get("preferences") if isinstance(existing.get("preferences"), dict) else {}
+    if merge:
+        for key in ("preferred_domains", "search_keywords", "suggested_job_titles", "strengths", "gaps", "experience"):
+            resume_preferences[key] = _unique_items((existing_preferences.get(key) or []) + (resume_preferences.get(key) or []))
+    return {
+        "name": resume_profile.get("name") or (existing.get("name") if merge else None),
+        "target_roles": _unique_items((existing.get("target_roles") or []) + (resume_profile.get("target_roles") or [])) if merge else _unique_items(resume_profile.get("target_roles") or []),
+        "target_locations": _unique_items((existing.get("target_locations") or []) + (resume_profile.get("target_locations") or [])) if merge else _unique_items(resume_profile.get("target_locations") or []),
+        "education": {**(existing.get("education") or {}), **(resume_profile.get("education") or {})} if merge else (resume_profile.get("education") or {}),
+        "work_authorization_notes": existing.get("work_authorization_notes") if merge else "",
+        "skills": merged_skills,
+        "projects": _unique_items((existing.get("projects") or []) + (resume_profile.get("projects") or [])) if merge else _unique_items(resume_profile.get("projects") or []),
+        "preferences": {**existing_preferences, **resume_preferences} if merge else resume_preferences,
+    }
 
 
 def _get_job(db: SQLSession, job_id: int) -> CareerJob:
@@ -295,7 +346,7 @@ def _fetch_public_text(url: str) -> tuple[str | None, str | None]:
 def create_search_plan(req: SearchPlanRequest):
     if not req.target_role.strip():
         raise HTTPException(status_code=400, detail="target_role is required")
-    return generate_job_search_plan(req.model_dump())
+    return generate_job_search_plan({**req.model_dump(), "language": req.output_language})
 
 
 @router.post("/career/search/extract")
@@ -307,7 +358,7 @@ async def extract_search_results(req: ExtractSearchRequest, db: SQLSession = Dep
         req.source_hint,
         req.target_role,
         req.locations,
-        req.language,
+        req.output_language,
     )
     existing = db.query(CareerJob).all()
     result["job_leads"] = _mark_duplicates(result.get("job_leads") or [], existing)
@@ -325,7 +376,7 @@ async def fetch_public_pages(req: FetchPublicRequest, db: SQLSession = Depends(g
         text, error = _fetch_public_text(clean_url)
         page = {"url": clean_url, "text": text, "error": error}
         if text:
-            extracted = await extract_job_leads(text, req.source_hint, None, [], req.language)
+            extracted = await extract_job_leads(text, req.source_hint, None, [], req.output_language)
             leads = extracted.get("job_leads") or []
             for lead in leads:
                 lead["job_url"] = lead.get("job_url") or clean_url
@@ -390,10 +441,10 @@ async def save_search_leads(req: SaveLeadsRequest, db: SQLSession = Depends(get_
                 job.role_title,
                 job.location,
                 _profile_to_dict(_active_profile(db)),
-                req.language,
+                req.output_language,
             )
             job.parsed_job_json = _dumps(parsed)
-            score = await score_career_job(parsed, _profile_to_dict(_active_profile(db)), req.language)
+            score = await score_career_job(parsed, _profile_to_dict(_active_profile(db)), req.output_language)
             job.fit_score = score.get("overall_score")
             job.priority = score.get("priority") or "unknown"
             job.fit_summary = score.get("summary")
@@ -411,13 +462,18 @@ class PasteAnalyzeRequest(BaseModel):
     job_url: str | None = None
     application_url: str | None = None
     notes: str | None = None
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
 
 
 class PasteSaveRequest(BaseModel):
     analysis_result: dict
     save_mode: Literal["save_only", "save_parse_score", "save_prepare_interview"] = "save_only"
-    language: Literal["en", "zh"] = "en"
+    output_language: Literal["en", "zh"] = "en"
+
+
+class ApplyResumeAnalysisRequest(BaseModel):
+    resume_profile: dict
+    merge_mode: Literal["replace", "merge"] = "replace"
 
 
 @router.post("/career/paste/analyze")
@@ -431,7 +487,7 @@ async def paste_analyze(req: PasteAnalyzeRequest, db: SQLSession = Depends(get_d
         req.job_url,
         req.application_url,
         profile,
-        req.language,
+        req.output_language,
     )
 
 
@@ -512,7 +568,7 @@ async def paste_save(req: PasteSaveRequest, db: SQLSession = Depends(get_db)):
     if req.save_mode == "save_parse_score" and cleaned_jd:
         # Re-score with full pipeline
         profile = _profile_to_dict(_active_profile(db))
-        score = await score_career_job(parsed_job_struct, profile, req.language)
+        score = await score_career_job(parsed_job_struct, profile, req.output_language)
         job.fit_score = score.get("overall_score")
         job.priority = score.get("priority") or priority
         job.fit_summary = score.get("summary")
@@ -525,9 +581,9 @@ async def paste_save(req: PasteSaveRequest, db: SQLSession = Depends(get_db)):
     elif req.save_mode == "save_prepare_interview" and cleaned_jd:
         try:
             profile_data = await analyze_jd(
-                job.company_name, job.role_title, cleaned_jd, req.language
+                job.company_name, job.role_title, cleaned_jd, req.output_language
             )
-            blueprint_data = await generate_blueprint(profile_data, req.language)
+            blueprint_data = await generate_blueprint(profile_data, req.output_language)
 
             jd_profile = JDProfile(
                 company_name=profile_data.get("company_name"),
@@ -539,7 +595,7 @@ async def paste_save(req: PasteSaveRequest, db: SQLSession = Depends(get_db)):
                 required_skills_json=_dumps(profile_data.get("required_skills") or []),
                 interview_focus_json=_dumps(profile_data.get("interview_focus") or []),
                 source_jd_text=cleaned_jd,
-                language=req.language,
+                language=req.output_language,
             )
             db.add(jd_profile)
             db.commit()
@@ -596,6 +652,51 @@ def upsert_candidate_profile(req: CandidateProfileRequest, db: SQLSession = Depe
     profile.skills_json = _dumps(req.skills)
     profile.projects_json = _dumps(req.projects)
     profile.preferences_json = _dumps(req.preferences)
+    profile.updated_at = _now()
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+@router.post("/career/profile/analyze-resume")
+async def analyze_resume_profile(
+    resume_file: UploadFile | None = File(default=None),
+    resume_text: str | None = Form(default=None),
+    output_language: Literal["en", "zh"] = Form(default="en"),
+):
+    text = (resume_text or "").strip()
+    if resume_file:
+        if resume_file.content_type not in {"application/pdf", "application/x-pdf"} and not (resume_file.filename or "").lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        content = await resume_file.read()
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Resume PDF must be 10MB or smaller.")
+        try:
+            from pypdf import PdfReader
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(content)).pages).strip()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Could not extract text from PDF. Please paste resume text manually.")
+    if not text:
+        raise HTTPException(status_code=400, detail="Provide a resume PDF or paste resume text.")
+    return await analyze_resume(text[:60000], output_language)
+
+
+@router.post("/career/profile/apply-resume-analysis")
+def apply_resume_analysis(req: ApplyResumeAnalysisRequest, db: SQLSession = Depends(get_db)):
+    profile = _active_profile(db)
+    existing = _profile_to_dict(profile)
+    data = _resume_to_profile_data(req.resume_profile, existing, req.merge_mode == "merge")
+    if not profile:
+        profile = CandidateProfile(created_at=_now())
+        db.add(profile)
+    profile.name = data["name"]
+    profile.target_roles_json = _dumps(data["target_roles"])
+    profile.target_locations_json = _dumps(data["target_locations"])
+    profile.education_json = _dumps(data["education"])
+    profile.work_authorization_notes = data["work_authorization_notes"]
+    profile.skills_json = _dumps(data["skills"])
+    profile.projects_json = _dumps(data["projects"])
+    profile.preferences_json = _dumps(data["preferences"])
     profile.updated_at = _now()
     db.commit()
     db.refresh(profile)
@@ -679,7 +780,7 @@ async def parse_job(job_id: int, req: ParseJobRequest, db: SQLSession = Depends(
         job.role_title,
         job.location,
         profile,
-        req.interview_language,
+        req.output_language,
     )
     job.parsed_job_json = _dumps(parsed)
     job.company_name = parsed.get("company_name") or job.company_name
@@ -704,11 +805,27 @@ async def score_job(job_id: int, req: ScoreJobRequest, db: SQLSession = Depends(
             job.role_title,
             job.location,
             _profile_to_dict(_active_profile(db)),
-            req.interview_language,
+            req.output_language,
         )
         job.parsed_job_json = _dumps(parsed)
 
-    result = await score_career_job(parsed, _profile_to_dict(_active_profile(db)), req.interview_language)
+    profile = _profile_to_dict(_active_profile(db))
+    if not _has_profile_content(profile):
+        warning = "请先添加或导入简历，以获得个性化匹配评分。" if req.output_language == "zh" else "Add or import your resume to get a personalized fit score."
+        result = {
+            "overall_score": 0,
+            "priority": "unknown",
+            "summary": warning,
+            "breakdown": {},
+            "matched_strengths": [],
+            "gaps": [],
+            "recommended_resume_keywords": [],
+            "recommended_projects_to_highlight": [],
+            "next_action": "needs_more_info",
+            "personalization_warning": warning,
+        }
+    else:
+        result = await score_career_job(parsed, profile, req.output_language)
     job.fit_score = result.get("overall_score")
     job.priority = result.get("priority") or "unknown"
     job.fit_summary = result.get("summary")
@@ -726,8 +843,8 @@ async def prepare_interview(job_id: int, req: PrepareInterviewRequest, db: SQLSe
     if not raw_jd:
         raise HTTPException(status_code=400, detail="Add or paste the job description before generating a tailored interview.")
 
-    profile_data = await analyze_jd(job.company_name, job.role_title, raw_jd, req.interview_language)
-    blueprint_data = await generate_blueprint(profile_data, req.interview_language)
+    profile_data = await analyze_jd(job.company_name, job.role_title, raw_jd, req.output_language)
+    blueprint_data = await generate_blueprint(profile_data, req.output_language)
 
     profile = JDProfile(
         company_name=profile_data.get("company_name"),
@@ -739,7 +856,7 @@ async def prepare_interview(job_id: int, req: PrepareInterviewRequest, db: SQLSe
         required_skills_json=_dumps(profile_data.get("required_skills") or []),
         interview_focus_json=_dumps(profile_data.get("interview_focus") or []),
         source_jd_text=raw_jd,
-        language=req.interview_language,
+        language=req.output_language,
     )
     db.add(profile)
     db.commit()

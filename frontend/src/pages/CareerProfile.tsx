@@ -4,7 +4,7 @@ import LanguageControls from '../components/LanguageControls';
 import MainNav from '../components/MainNav';
 import BackLink from '../components/ui/BackLink';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { getCandidateProfile, saveCandidateProfile, type CandidateProfile } from '../lib/api';
+import { analyzeResume, applyResumeAnalysis, getCandidateProfile, saveCandidateProfile, type CandidateProfile, type ResumeAnalysisResponse } from '../lib/api';
 import { useI18n } from '../i18n/useI18n';
 
 const split = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -31,13 +31,18 @@ const emptyProfile: Omit<CandidateProfile, 'id' | 'created_at' | 'updated_at'> =
 };
 
 export default function CareerProfile() {
-  const { t } = useI18n();
+  const { t, uiLanguage } = useI18n();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(emptyProfile);
   const [projectText, setProjectText] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeText, setResumeText] = useState('');
+  const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysisResponse | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState('');
 
   useEffect(() => {
     getCandidateProfile()
@@ -101,6 +106,26 @@ export default function CareerProfile() {
     }
   };
 
+  const analyzeImportedResume = async () => {
+    if (!resumeFile && !resumeText.trim()) { setResumeError(t('resumeInputRequired')); return; }
+    setResumeBusy(true); setResumeError(''); setMessage('');
+    try { setResumeAnalysis(await analyzeResume({ resumeFile, resumeText, outputLanguage: uiLanguage })); }
+    catch (err) { setResumeError(err instanceof Error && err.message.includes('Could not extract text from PDF') ? t('pdfExtractionFailed') : (err instanceof Error ? err.message : String(err))); }
+    finally { setResumeBusy(false); }
+  };
+
+  const applyImportedResume = async (mergeMode: 'replace' | 'merge') => {
+    if (!resumeAnalysis) return;
+    setResumeBusy(true); setResumeError('');
+    try {
+      const saved = await applyResumeAnalysis(resumeAnalysis.resume_profile, mergeMode);
+      setProfile({ name: saved.name || '', target_roles: saved.target_roles || [], target_locations: saved.target_locations || [], education: saved.education || {}, work_authorization_notes: saved.work_authorization_notes || '', skills: { ...emptyProfile.skills, ...(saved.skills || {}) }, projects: saved.projects || [], preferences: saved.preferences || {} });
+      setProjectText((saved.projects || []).map((p) => `${p.name || ''} | ${p.description || ''} | ${Array.isArray(p.tech_stack) ? p.tech_stack.join(', ') : ''}`).join('\n'));
+      setMessage(t('resumeApplied'));
+    } catch (err) { setResumeError(err instanceof Error ? err.message : String(err)); }
+    finally { setResumeBusy(false); }
+  };
+
   return (
     <div className="career-page">
       <header className="home-header">
@@ -115,6 +140,28 @@ export default function CareerProfile() {
       <div className="page-back-row">
         <BackLink to="/career" label={t('backToCareerMode')} />
       </div>
+
+      <section className="career-panel profile-form">
+        <h2>{t('resumeImport')}</h2>
+        <label htmlFor="resume-file">{t('uploadResumePdf')}</label>
+        <input id="resume-file" type="file" accept="application/pdf,.pdf" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
+        <label htmlFor="resume-text">{t('pasteResumeText')}</label>
+        <textarea id="resume-text" value={resumeText} onChange={(e) => setResumeText(e.target.value)} aria-label={t('pasteResumeText')} />
+        <button className="btn-filled" onClick={analyzeImportedResume} disabled={resumeBusy}>{resumeBusy ? t('analyzingResume') : t('analyzeResume')}</button>
+        {resumeError && <p className="form-error" role="alert">{resumeError}</p>}
+        {resumeAnalysis && <div className="resume-preview">
+          <h3>{t('extractedProfile')}</h3><p className="blueprint-summary">{resumeAnalysis.profile_summary}</p>
+          <ListPreview title={t('education')} items={Object.values(resumeAnalysis.resume_profile.education).filter(Boolean).map(String)} />
+          <ListPreview title={t('suggestedJobTitles')} items={resumeAnalysis.resume_profile.suggested_job_titles} />
+          <ListPreview title={t('targetLocations')} items={resumeAnalysis.resume_profile.target_locations} />
+          <ListPreview title={t('skills')} items={Object.values(resumeAnalysis.resume_profile.skills).flat()} />
+          <ListPreview title={t('projects')} items={resumeAnalysis.resume_profile.projects.map((p) => String(p.name || ''))} />
+          <ListPreview title={t('strengths')} items={resumeAnalysis.resume_profile.strengths} />
+          <ListPreview title={t('gaps')} items={resumeAnalysis.resume_profile.gaps} />
+          <ListPreview title={t('searchKeywords')} items={resumeAnalysis.resume_profile.search_keywords} />
+          <div className="career-actions"><button className="btn-filled" onClick={() => applyImportedResume('replace')} disabled={resumeBusy}>{t('applyToProfile')}</button><button className="btn-text" onClick={() => applyImportedResume('merge')} disabled={resumeBusy}>{t('mergeIntoExistingProfile')}</button><button className="btn-text" onClick={() => setResumeAnalysis(null)}>{t('discard')}</button><button className="btn-text" onClick={() => navigate('/career/search-agent')}>{t('useInSearchAgent')}</button></div>
+        </div>}
+      </section>
 
       <section className="career-panel profile-form">
         <label htmlFor="target-roles">{t('targetRoles')}</label>
@@ -197,4 +244,8 @@ export default function CareerProfile() {
       </section>
     </div>
   );
+}
+
+function ListPreview({ title, items }: { title: string; items: string[] }) {
+  return <div><strong>{title}</strong><p className="muted">{items.length ? items.join(', ') : '-'}</p></div>;
 }

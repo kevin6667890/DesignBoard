@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import LanguageControls from '../components/LanguageControls';
 import MainNav from '../components/MainNav';
 import BackLink from '../components/ui/BackLink';
@@ -11,6 +11,7 @@ import {
   extractSearchLeads,
   fetchPublicSearchPages,
   generateSearchPlan,
+  getCandidateProfile,
   saveSearchLeads,
   type JobLead,
   type SearchPlanResponse,
@@ -29,12 +30,12 @@ function leadLabel(lead: JobLead) {
 }
 
 export default function CareerSearchAgent() {
-  const { t, interviewLanguage } = useI18n();
-  const [targetRole, setTargetRole] = useState('Backend Developer Intern');
-  const [locationsText, setLocationsText] = useState('Canada, Toronto, Remote Canada');
-  const [term, setTerm] = useState('Summer 2027');
-  const [domain, setDomain] = useState('backend');
-  const [keywordsText, setKeywordsText] = useState('Python, TypeScript, SQL, AWS');
+  const { t, uiLanguage } = useI18n();
+  const [targetRole, setTargetRole] = useState('');
+  const [locationsText, setLocationsText] = useState('');
+  const [term, setTerm] = useState('');
+  const [domain, setDomain] = useState('general');
+  const [keywordsText, setKeywordsText] = useState('');
   const [sources, setSources] = useState<string[]>(['Google', 'Company Careers', 'Greenhouse', 'Lever', 'Manual Paste']);
   const [remotePreference, setRemotePreference] = useState<'remote' | 'hybrid' | 'onsite' | 'any'>('any');
   const [experienceLevel, setExperienceLevel] = useState<'intern' | 'co-op' | 'new_grad' | 'any'>('intern');
@@ -48,6 +49,22 @@ export default function CareerSearchAgent() {
   const [savedCount, setSavedCount] = useState<number | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getCandidateProfile>> | null>(null);
+
+  useEffect(() => { getCandidateProfile().then(setProfile).catch(() => setProfile(null)); }, []);
+
+  const loadProfile = () => {
+    if (!profile) return;
+    const suggestedTitles = profile.preferences.suggested_job_titles as string[] | undefined;
+    const searchKeywords = profile.preferences.search_keywords as string[] | undefined;
+    const preferredDomains = profile.preferences.preferred_domains as string[] | undefined;
+    setTargetRole(profile.target_roles[0] || suggestedTitles?.[0] || '');
+    setLocationsText(profile.target_locations.join(', '));
+    setKeywordsText((searchKeywords || []).join(', '));
+    setDomain(preferredDomains?.[0] || 'general');
+    const roles = profile.target_roles.join(' ').toLowerCase();
+    setExperienceLevel(roles.includes('co-op') ? 'co-op' : roles.includes('new grad') ? 'new_grad' : 'intern');
+  };
 
   const locations = useMemo(() => splitList(locationsText), [locationsText]);
   const keywords = useMemo(() => splitList(keywordsText), [keywordsText]);
@@ -71,7 +88,7 @@ export default function CareerSearchAgent() {
         sources,
         remote_preference: remotePreference,
         experience_level: experienceLevel,
-        language: interviewLanguage,
+        output_language: uiLanguage,
       });
       setPlan(result);
     } catch (err) {
@@ -99,7 +116,7 @@ export default function CareerSearchAgent() {
         source_hint: sourceHint,
         target_role: targetRole,
         locations,
-        language: interviewLanguage,
+        output_language: uiLanguage,
       });
       setLeads(result.job_leads);
       setSelected(new Set(result.job_leads.map((lead, idx) => !lead.duplicate_warning ? idx : -1).filter((idx) => idx >= 0)));
@@ -118,7 +135,7 @@ export default function CareerSearchAgent() {
       const result = await fetchPublicSearchPages({
         urls: publicUrls.split('\n').map((url) => url.trim()).filter(Boolean),
         source_hint: sourceHint,
-        language: interviewLanguage,
+        output_language: uiLanguage,
       });
       setPageTexts(result.pages);
       mergeLeads(result.job_leads);
@@ -133,7 +150,7 @@ export default function CareerSearchAgent() {
     setBusy(parseAndScore ? t('savingParsingScoring') : t('savingLeads'));
     setError('');
     try {
-      const result = await saveSearchLeads({ leads: selectedLeads, parse_and_score: parseAndScore, language: interviewLanguage });
+      const result = await saveSearchLeads({ leads: selectedLeads, parse_and_score: parseAndScore, output_language: uiLanguage });
       setSavedCount(result.saved_jobs.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('failedSave'));
@@ -157,7 +174,7 @@ export default function CareerSearchAgent() {
       <section className="career-panel profile-form">
         <div className="panel-title-row">
           <h2>{t('searchRequest')}</h2>
-          <button className="btn-filled" onClick={generatePlan} disabled={!!busy || !targetRole.trim()}>{busy === t('generatingSearchPlan') ? t('generatingSearchPlan') : t('generateSearchPlan')}</button>
+          <div className="career-actions"><button className="btn-text" onClick={loadProfile} disabled={!profile?.id}>{t('loadFromProfile')}</button><button className="btn-filled" onClick={generatePlan} disabled={!!busy || !targetRole.trim()}>{busy === t('generatingSearchPlan') ? t('generatingSearchPlan') : t('generateSearchPlan')}</button></div>
         </div>
         <div className="career-search-grid">
           <input value={targetRole} onChange={(e) => setTargetRole(e.target.value)} placeholder={t('targetRole')} aria-label={t('targetRole')} />

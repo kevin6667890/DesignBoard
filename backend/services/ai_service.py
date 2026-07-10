@@ -518,6 +518,40 @@ async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_
     return _normalize_fit_score(score, interview_language)
 
 
+def _fallback_resume_analysis(language: str) -> dict:
+    message = "无法完整分析简历；请检查内容后手动编辑候选人资料。" if language == "zh" else "Could not fully analyze the resume. Review the content and edit the candidate profile manually."
+    return {
+        "resume_profile": {"name": "", "education": {}, "target_roles": [], "target_locations": [], "skills": {"languages": [], "frontend": [], "backend": [], "databases": [], "cloud_devops": [], "ai_tools": [], "testing": [], "other": []}, "projects": [], "experience": [], "preferred_domains": [], "search_keywords": [], "suggested_job_titles": [], "strengths": [], "gaps": [message]},
+        "recommended_search_queries": [],
+        "profile_summary": message,
+    }
+
+
+async def analyze_resume(resume_text: str, output_language: str) -> dict:
+    language_name = "Chinese" if output_language == "zh" else "English"
+    prompt = f"""Extract a conservative candidate profile from this resume. Return ONLY strict JSON.
+Return all user-facing explanation fields in {language_name}. Keep company names, role titles, programming languages, protocols, frameworks, and technical terms such as API, Python, React, BGP, OSPF, Kubernetes, SQL in their original form when appropriate.
+Do not invent locations, work authorization, experience level, or skills. Infer multiple role targets only when the resume supports them.
+JSON schema: {{"resume_profile":{{"name":"","education":{{"school":"","degree":"","major":"","year_level":"","graduation_year":""}},"target_roles":[],"target_locations":[],"skills":{{"languages":[],"frontend":[],"backend":[],"databases":[],"cloud_devops":[],"ai_tools":[],"testing":[],"other":[]}},"projects":[{{"name":"","description":"","tech_stack":[],"relevance_tags":[]}}],"experience":[{{"company":"","role":"","summary":"","tech_stack":[],"relevance_tags":[]}}],"preferred_domains":[],"search_keywords":[],"suggested_job_titles":[],"strengths":[],"gaps":[]}},"recommended_search_queries":[{{"label":"","query":"","why":""}}],"profile_summary":""}}
+Resume text:\n{resume_text[:60000]}"""
+    try:
+        response = await client.chat.completions.create(model="deepseek-chat", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
+        result = _extract_json_object(response.choices[0].message.content)
+    except Exception:
+        return _fallback_resume_analysis(output_language)
+    fallback = _fallback_resume_analysis(output_language)
+    profile = result.get("resume_profile") if isinstance(result.get("resume_profile"), dict) else {}
+    fallback_profile = fallback["resume_profile"]
+    skills = profile.get("skills") if isinstance(profile.get("skills"), dict) else {}
+    for key in fallback_profile["skills"]:
+        skills[key] = _safe_list(skills.get(key))
+    profile["skills"] = skills
+    profile["education"] = profile.get("education") if isinstance(profile.get("education"), dict) else {}
+    for key in ["target_roles", "target_locations", "projects", "experience", "preferred_domains", "search_keywords", "suggested_job_titles", "strengths", "gaps"]:
+        profile[key] = _safe_list(profile.get(key))
+    return {"resume_profile": profile, "recommended_search_queries": _safe_list(result.get("recommended_search_queries"))[:12], "profile_summary": _safe_str(result.get("profile_summary")) or fallback["profile_summary"]}
+
+
 def generate_job_search_plan(request: dict) -> dict:
     role = _safe_str(request.get("target_role")) or "Software Engineer Intern"
     locations = [_safe_str(item) for item in _safe_list(request.get("locations")) if _safe_str(item)]

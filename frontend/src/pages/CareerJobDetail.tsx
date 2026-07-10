@@ -31,7 +31,7 @@ function ListBlock({ title, items }: { title: string; items?: string[] }) {
 
 export default function CareerJobDetail() {
   const { jobId } = useParams<{ jobId: string }>();
-  const { t, interviewLanguage } = useI18n();
+  const { t, uiLanguage, interviewLanguage } = useI18n();
   const navigate = useNavigate();
   const [job, setJob] = useState<CareerJob | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -159,7 +159,7 @@ export default function CareerJobDetail() {
           <div className="career-actions">
             <button
               className="btn-text"
-              onClick={() => refreshWith(parseCareerJob(job.id, interviewLanguage), t('parsingJd'))}
+              onClick={() => refreshWith(parseCareerJob(job.id, uiLanguage), t('parsingJd'))}
               disabled={!!working || !hasJd}
               aria-disabled={!!working || !hasJd}
               title={!hasJd ? t('addJdBeforeInterview') : undefined}
@@ -168,7 +168,7 @@ export default function CareerJobDetail() {
             </button>
             <button
               className="btn-text"
-              onClick={() => refreshWith(scoreCareerJob(job.id, interviewLanguage), t('scoringJob'))}
+              onClick={() => refreshWith(scoreCareerJob(job.id, uiLanguage), t('scoringJob'))}
               disabled={!!working || !hasJd}
               aria-disabled={!!working || !hasJd}
               title={!hasJd ? t('addJdBeforeInterview') : undefined}

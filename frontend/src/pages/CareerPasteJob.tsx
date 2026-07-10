@@ -73,7 +73,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 }
 
 export default function CareerPasteJob() {
-  const { t, interviewLanguage } = useI18n();
+  const { t, uiLanguage } = useI18n();
   const navigate = useNavigate();
 
   // Input state
@@ -107,7 +107,7 @@ export default function CareerPasteJob() {
         job_url: jobUrl || undefined,
         application_url: applicationUrl || undefined,
         notes: notes || undefined,
-        language: interviewLanguage,
+        output_language: uiLanguage,
       });
       setAnalysisResult(result);
     } catch (err) {
@@ -125,7 +125,7 @@ export default function CareerPasteJob() {
       const res = await savePastedJob({
         analysis_result: analysisResult as PasteAnalysisResult,
         save_mode: mode,
-        language: interviewLanguage,
+        output_language: uiLanguage,
       });
       if (mode === 'save_prepare_interview' && res.prepared_interview) {
         navigate('/custom', { state: res.prepared_interview });

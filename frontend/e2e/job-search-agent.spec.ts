@@ -58,6 +58,7 @@ test('page loads from Career Mode', async ({ page }) => {
 
 test('generate search plan with mocked response', async ({ page }) => {
   await page.goto('/career/search-agent');
+  await page.getByLabel('Target role').fill('Synthetic Backend Intern');
   await page.getByText('Generate search plan').click();
   await expect(page.getByText('Public-search plan')).toBeVisible();
   await expect(page.getByText('site:greenhouse.io')).toBeVisible();
@@ -66,6 +67,7 @@ test('generate search plan with mocked response', async ({ page }) => {
 test('copy query button works', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/career/search-agent');
+  await page.getByLabel('Target role').fill('Synthetic Backend Intern');
   await page.getByText('Generate search plan').click();
   await page.getByRole('button', { name: 'Copy query' }).first().click();
   await expect(page.getByRole('button', { name: 'Copied!' }).first()).toBeVisible();
@@ -100,6 +102,7 @@ test('empty and error states render', async ({ page }) => {
   await page.goto('/career/search-agent');
   await expect(page.getByText('No generated queries yet.')).toBeVisible();
   await expect(page.getByText('No leads found.')).toBeVisible();
+  await page.getByLabel('Target role').fill('Synthetic Backend Intern');
   await page.getByText('Generate search plan').click();
   await expect(page.locator('.error-state')).toBeVisible();
 });

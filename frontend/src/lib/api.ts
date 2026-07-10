@@ -120,7 +120,7 @@ export interface SearchPlanRequest {
   sources: string[];
   remote_preference: 'remote' | 'hybrid' | 'onsite' | 'any';
   experience_level: 'intern' | 'co-op' | 'new_grad' | 'any';
-  language: Language;
+  output_language: Language;
 }
 
 export interface SearchQuery {
@@ -378,24 +378,24 @@ export function deleteCareerJob(jobId: number): Promise<{ ok: boolean }> {
   return fetchJson(`/career/jobs/${jobId}`, { method: 'DELETE' });
 }
 
-export function parseCareerJob(jobId: number, interviewLanguage: Language): Promise<CareerJob> {
+export function parseCareerJob(jobId: number, outputLanguage: Language): Promise<CareerJob> {
   return fetchJson(`/career/jobs/${jobId}/parse`, {
     method: 'POST',
-    body: JSON.stringify({ interview_language: interviewLanguage }),
+    body: JSON.stringify({ output_language: outputLanguage }),
   });
 }
 
-export function scoreCareerJob(jobId: number, interviewLanguage: Language): Promise<CareerJob> {
+export function scoreCareerJob(jobId: number, outputLanguage: Language): Promise<CareerJob> {
   return fetchJson(`/career/jobs/${jobId}/score`, {
     method: 'POST',
-    body: JSON.stringify({ interview_language: interviewLanguage }),
+    body: JSON.stringify({ output_language: outputLanguage }),
   });
 }
 
 export function prepareCareerInterview(jobId: number, interviewLanguage: Language): Promise<{ profile: JDProfile; blueprint: InterviewBlueprint }> {
   return fetchJson(`/career/jobs/${jobId}/prepare-interview`, {
     method: 'POST',
-    body: JSON.stringify({ interview_language: interviewLanguage }),
+    body: JSON.stringify({ output_language: interviewLanguage }),
   });
 }
 
@@ -411,7 +411,7 @@ export function extractSearchLeads(params: {
   source_hint?: string;
   target_role?: string;
   locations?: string[];
-  language: Language;
+  output_language: Language;
 }): Promise<ExtractSearchResponse> {
   return fetchJson('/career/search/extract', {
     method: 'POST',
@@ -422,7 +422,7 @@ export function extractSearchLeads(params: {
 export function fetchPublicSearchPages(params: {
   urls: string[];
   source_hint?: string;
-  language: Language;
+  output_language: Language;
 }): Promise<FetchPublicResponse> {
   return fetchJson('/career/search/fetch-public', {
     method: 'POST',
@@ -433,7 +433,7 @@ export function fetchPublicSearchPages(params: {
 export function saveSearchLeads(params: {
   leads: JobLead[];
   parse_and_score?: boolean;
-  language: Language;
+  output_language: Language;
 }): Promise<SaveLeadsResponse> {
   return fetchJson('/career/search/save-leads', {
     method: 'POST',
@@ -529,7 +529,7 @@ export function analyzePastedJobPage(params: {
   job_url?: string;
   application_url?: string;
   notes?: string;
-  language: Language;
+  output_language: Language;
 }): Promise<PasteAnalyzeResponse> {
   return fetchJson('/career/paste/analyze', {
     method: 'POST',
@@ -540,10 +540,45 @@ export function analyzePastedJobPage(params: {
 export function savePastedJob(params: {
   analysis_result: PasteAnalysisResult;
   save_mode: 'save_only' | 'save_parse_score' | 'save_prepare_interview';
-  language: Language;
+  output_language: Language;
 }): Promise<PasteSaveResponse> {
   return fetchJson('/career/paste/save', {
     method: 'POST',
     body: JSON.stringify(params),
   });
+}
+
+export interface ResumeProfileAnalysis {
+  name: string;
+  education: Record<string, string>;
+  target_roles: string[];
+  target_locations: string[];
+  skills: Record<string, string[]>;
+  projects: Array<Record<string, unknown>>;
+  experience: Array<Record<string, unknown>>;
+  preferred_domains: string[];
+  search_keywords: string[];
+  suggested_job_titles: string[];
+  strengths: string[];
+  gaps: string[];
+}
+
+export interface ResumeAnalysisResponse {
+  resume_profile: ResumeProfileAnalysis;
+  recommended_search_queries: Array<{ label: string; query: string; why: string }>;
+  profile_summary: string;
+}
+
+export async function analyzeResume(params: { resumeFile?: File | null; resumeText?: string; outputLanguage: Language }): Promise<ResumeAnalysisResponse> {
+  const body = new FormData();
+  if (params.resumeFile) body.append('resume_file', params.resumeFile);
+  if (params.resumeText) body.append('resume_text', params.resumeText);
+  body.append('output_language', params.outputLanguage);
+  const res = await fetch(`${BASE}/career/profile/analyze-resume`, { method: 'POST', body });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export function applyResumeAnalysis(resumeProfile: ResumeProfileAnalysis, mergeMode: 'replace' | 'merge'): Promise<CandidateProfile> {
+  return fetchJson('/career/profile/apply-resume-analysis', { method: 'POST', body: JSON.stringify({ resume_profile: resumeProfile, merge_mode: mergeMode }) });
 }

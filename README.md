@@ -89,10 +89,13 @@ Company web research is planned but not implemented. Coding/editor rounds are pl
 Career Mode helps a CS student organize Canadian internship opportunities.
 
 - **Candidate profile** - Store target roles, target locations, education, skills, projects, work authorization notes, and preferences locally in SQLite.
+- **Resume import** - Import a resume PDF or paste resume text to extract education, skills, projects, suggested roles, and search keywords. Uploaded resume files are parsed locally by the backend for text extraction and are not stored as files.
 - **Paste Job Page (Recommended)** - Copy any job posting page, paste it into DesignBoard, and the app extracts structured fields, evaluates fit, and saves it into the tracker.
 - **Job Search Agent** - A secondary helper that generates search plans, Google query links, and imports public job links.
 - **Application tracking** - Track saved, ready to apply, applied, OA, interview, rejected, offer, and archived statuses with quick updates.
 - **Interview preparation handoff** - Sends a saved job into the existing JD-tailored interview planner so the user can generate a blueprint and start a custom system design interview.
+- **Language-consistent Career analysis** - Career Mode summaries, fit explanations, search plans, and lead notes follow the selected UI language; interview conversations and scorecards continue to follow the separate interview language.
+- **Dynamic fit scoring** - Fit scoring uses the stored candidate profile rather than fixed role, location, or skill assumptions.
 
 Career Mode does not scrape LinkedIn, Indeed, Glassdoor, or protected platforms. It does not auto-apply, bypass rate limits, handle captchas, or provide legal/immigration advice.
 

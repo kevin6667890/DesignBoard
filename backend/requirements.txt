@@ -4,3 +4,5 @@ sqlalchemy
 openai
 python-dotenv
 pydantic
+pypdf
+python-multipart
