@@ -8,6 +8,7 @@ import CareerProfile from './pages/CareerProfile';
 import CareerJobForm from './pages/CareerJobForm';
 import CareerJobs from './pages/CareerJobs';
 import CareerJobDetail from './pages/CareerJobDetail';
+import CareerSearchAgent from './pages/CareerSearchAgent';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/career" element={<CareerHome />} />
         <Route path="/career/profile" element={<CareerProfile />} />
         <Route path="/career/jobs" element={<CareerJobs />} />
+        <Route path="/career/search-agent" element={<CareerSearchAgent />} />
         <Route path="/career/jobs/new" element={<CareerJobForm />} />
         <Route path="/career/jobs/:jobId" element={<CareerJobDetail />} />
         <Route path="/interview/:sessionId" element={<Interview />} />

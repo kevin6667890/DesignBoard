@@ -219,3 +219,11 @@ For a local-first demo application, SQLite eliminates operational overhead. Ther
 ### How the AI interviewer prompt was engineered
 
 The system prompt for Alex is designed to avoid two common pitfalls in AI interview simulators: excessive helpfulness and generic feedback. By instructing DeepSeek to be terse, professional, evaluative, and to ask one focused question at a time, the prompt prevents the model from dumping a checklist of topics or hinting at the right answer. Specific behavioral rules for pressing vague answers, probing weak answers, escalating strong answers, and asking what the candidate is considering during pauses create interview-style pressure. The 2-4 sentence response limit forces Alex to react conversationally rather than lecture.
+
+## Job Search Agent
+
+DesignBoard v4.2 adds a guided Job Search Agent inside Career Mode for internship discovery. It generates structured search plans and copyable public search query links, imports pasted search results or job alert text, extracts job leads with AI, supports conservative fetching of user-provided public URLs when allowed, deduplicates leads, and saves selected items into the existing Career Mode job tracker.
+
+The agent does not auto-apply and does not bypass login, captcha, robots.txt, rate limits, or platform restrictions. LinkedIn, Indeed, Glassdoor, and private university or company portals should be used manually through opened search links or copied visible text.
+
+This is a search assistant and organizer, not a full automated web crawler.

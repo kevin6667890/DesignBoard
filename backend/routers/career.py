@@ -1,4 +1,9 @@
 import json
+import re
+from html.parser import HTMLParser
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -9,7 +14,7 @@ from sqlalchemy.orm import Session as SQLSession
 from database import get_db
 from models import CandidateProfile, CareerJob, InterviewBlueprint, JDProfile
 from routers.jd import blueprint_to_dict, profile_to_dict
-from services.ai_service import analyze_jd, generate_blueprint, parse_career_job, score_career_job
+from services.ai_service import analyze_jd, extract_job_leads, generate_blueprint, generate_job_search_plan, parse_career_job, score_career_job
 
 router = APIRouter()
 
@@ -52,6 +57,52 @@ class ScoreJobRequest(BaseModel):
 
 class PrepareInterviewRequest(BaseModel):
     interview_language: Literal["en", "zh"] = "en"
+
+class SearchPlanRequest(BaseModel):
+    target_role: str
+    locations: list[str] = []
+    term: str | None = None
+    domain: str | None = None
+    keywords: list[str] = []
+    sources: list[str] = []
+    remote_preference: Literal["remote", "hybrid", "onsite", "any"] = "any"
+    experience_level: Literal["intern", "co-op", "new_grad", "any"] = "intern"
+    language: Literal["en", "zh"] = "en"
+
+
+class ExtractSearchRequest(BaseModel):
+    pasted_text: str
+    source_hint: str | None = "unknown"
+    target_role: str | None = None
+    locations: list[str] = []
+    language: Literal["en", "zh"] = "en"
+
+
+class FetchPublicRequest(BaseModel):
+    urls: list[str]
+    source_hint: str | None = "unknown"
+    language: Literal["en", "zh"] = "en"
+
+
+class JobLeadRequest(BaseModel):
+    company_name: str | None = None
+    role_title: str | None = None
+    location: str | None = None
+    source: str | None = None
+    job_url: str | None = None
+    application_url: str | None = None
+    snippet: str | None = None
+    confidence: int | None = None
+    needs_jd: bool = True
+    reason: str | None = None
+    duplicate_key: str | None = None
+    duplicate_warning: str | None = None
+
+
+class SaveLeadsRequest(BaseModel):
+    leads: list[JobLeadRequest]
+    parse_and_score: bool = False
+    language: Literal["en", "zh"] = "en"
 
 
 def _loads(value: str | None, fallback):
@@ -151,6 +202,208 @@ def _get_job(db: SQLSession, job_id: int) -> CareerJob:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
+
+
+
+class _ReadableTextParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "noscript", "svg"}:
+            self.skip_depth += 1
+        if tag in {"p", "div", "section", "article", "li", "br", "tr", "h1", "h2", "h3"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style", "noscript", "svg"} and self.skip_depth:
+            self.skip_depth -= 1
+        if tag in {"p", "div", "section", "article", "li", "tr", "h1", "h2", "h3"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip_depth:
+            value = data.strip()
+            if value:
+                self.parts.append(value)
+
+    def text(self) -> str:
+        return re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", " ".join(self.parts))).strip()
+
+
+def _norm_text(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+
+def _lead_key(lead: dict | JobLeadRequest) -> str:
+    data = lead.model_dump() if isinstance(lead, JobLeadRequest) else lead
+    url = _norm_text(data.get("job_url") or data.get("application_url"))
+    if url:
+        return f"url:{url}"
+    return "|".join([
+        _norm_text(data.get("company_name")),
+        _norm_text(data.get("role_title")),
+        _norm_text(data.get("location")),
+    ])
+
+
+def _mark_duplicates(leads: list[dict], existing_jobs: list[CareerJob] | None = None) -> list[dict]:
+    existing_keys = {_lead_key(_job_to_dict(job)) for job in (existing_jobs or [])}
+    seen: dict[str, int] = {}
+    output = []
+    for lead in leads:
+        key = _lead_key(lead)
+        item = {**lead, "duplicate_key": key or None, "duplicate_warning": None}
+        if key and key in existing_keys:
+            item["duplicate_warning"] = "Already exists in tracker"
+        elif key and key in seen:
+            item["duplicate_warning"] = "Possible duplicate in extracted results"
+        if key:
+            seen[key] = seen.get(key, 0) + 1
+        output.append(item)
+    return output
+
+
+def _fetch_public_text(url: str) -> tuple[str | None, str | None]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None, "Invalid public URL."
+    blocked = ["linkedin.com", "indeed.com", "glassdoor.com"]
+    host = parsed.netloc.lower()
+    if any(domain in host for domain in blocked):
+        return None, "Paste this platform text manually. Public fetching is disabled for this source."
+    try:
+        req = Request(url, headers={"User-Agent": "DesignBoardJobSearchAgent/1.0"})
+        with urlopen(req, timeout=8) as response:
+            content_type = response.headers.get("content-type", "")
+            raw = response.read(700000)
+        if "text/html" not in content_type and "text/plain" not in content_type and content_type:
+            return None, "Could not fetch this page. Paste the job description manually."
+        html = raw.decode("utf-8", errors="replace")
+        parser = _ReadableTextParser()
+        parser.feed(html)
+        text = parser.text() if "html" in content_type else html.strip()
+        return text[:50000], None
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return None, "Could not fetch this page. Paste the job description manually."
+
+
+
+@router.post("/career/search/plan")
+def create_search_plan(req: SearchPlanRequest):
+    if not req.target_role.strip():
+        raise HTTPException(status_code=400, detail="target_role is required")
+    return generate_job_search_plan(req.model_dump())
+
+
+@router.post("/career/search/extract")
+async def extract_search_results(req: ExtractSearchRequest, db: SQLSession = Depends(get_db)):
+    if not req.pasted_text.strip():
+        raise HTTPException(status_code=400, detail="pasted_text is required")
+    result = await extract_job_leads(
+        req.pasted_text,
+        req.source_hint,
+        req.target_role,
+        req.locations,
+        req.language,
+    )
+    existing = db.query(CareerJob).all()
+    result["job_leads"] = _mark_duplicates(result.get("job_leads") or [], existing)
+    return result
+
+
+@router.post("/career/search/fetch-public")
+async def fetch_public_pages(req: FetchPublicRequest, db: SQLSession = Depends(get_db)):
+    pages = []
+    all_leads = []
+    for url in req.urls[:8]:
+        clean_url = (url or "").strip()
+        if not clean_url:
+            continue
+        text, error = _fetch_public_text(clean_url)
+        page = {"url": clean_url, "text": text, "error": error}
+        if text:
+            extracted = await extract_job_leads(text, req.source_hint, None, [], req.language)
+            leads = extracted.get("job_leads") or []
+            for lead in leads:
+                lead["job_url"] = lead.get("job_url") or clean_url
+                lead["source"] = lead.get("source") or req.source_hint or "Public URL"
+            all_leads.extend(leads)
+        pages.append(page)
+    existing = db.query(CareerJob).all()
+    return {"pages": pages, "job_leads": _mark_duplicates(all_leads, existing)}
+
+
+@router.post("/career/search/save-leads")
+async def save_search_leads(req: SaveLeadsRequest, db: SQLSession = Depends(get_db)):
+    saved_jobs = []
+    duplicates = []
+    skipped = []
+    existing = db.query(CareerJob).all()
+    existing_keys = {_lead_key(_job_to_dict(job)) for job in existing}
+
+    for lead in req.leads:
+        data = lead.model_dump()
+        key = _lead_key(data)
+        if key and key in existing_keys:
+            duplicates.append(data)
+            continue
+        if not (lead.company_name or lead.role_title or lead.job_url or lead.application_url or lead.snippet):
+            skipped.append({"lead": data, "reason": "Missing company, role, URL, and snippet"})
+            continue
+
+        snippet = (lead.snippet or "").strip()
+        enough_jd = len(snippet) >= 700
+        notes_parts = ["Imported from Job Search Agent."]
+        if lead.reason:
+            notes_parts.append(f"Reason: {lead.reason}")
+        if lead.confidence is not None:
+            notes_parts.append(f"Confidence: {lead.confidence}/100")
+        if lead.needs_jd or not enough_jd:
+            notes_parts.append("Needs JD: paste the full job description before parsing or interview prep.")
+
+        job = CareerJob(
+            company_name=lead.company_name,
+            role_title=lead.role_title,
+            location=lead.location,
+            job_url=lead.job_url,
+            application_url=lead.application_url,
+            source=lead.source or "Job Search Agent",
+            raw_job_description=snippet if enough_jd else None,
+            status="saved",
+            priority="unknown",
+            notes="\n".join(notes_parts + ([f"Snippet: {snippet[:1200]}"] if snippet and not enough_jd else [])),
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        existing_keys.add(key)
+
+        if req.parse_and_score and enough_jd:
+            parsed = await parse_career_job(
+                job.raw_job_description or "",
+                job.company_name,
+                job.role_title,
+                job.location,
+                _profile_to_dict(_active_profile(db)),
+                req.language,
+            )
+            job.parsed_job_json = _dumps(parsed)
+            score = await score_career_job(parsed, _profile_to_dict(_active_profile(db)), req.language)
+            job.fit_score = score.get("overall_score")
+            job.priority = score.get("priority") or "unknown"
+            job.fit_summary = score.get("summary")
+            job.fit_breakdown_json = _dumps(score)
+            job.updated_at = _now()
+            db.commit()
+            db.refresh(job)
+        saved_jobs.append(_job_to_dict(job))
+
+    return {"saved_jobs": saved_jobs, "duplicates": duplicates, "skipped": skipped}
 
 @router.get("/career/profile")
 def get_candidate_profile(db: SQLSession = Depends(get_db)):

@@ -122,7 +122,7 @@ export default function Interview() {
           const latestSession = sessionRef.current;
           if (latestSession) {
             getSession(latestSession.id)
-              .then((data) => setMessages(data.messages))
+              .then((data) => setMessages((prev) => data.messages.length >= prev.length ? data.messages : prev))
               .catch(console.error);
           }
         },

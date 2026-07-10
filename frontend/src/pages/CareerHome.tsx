@@ -108,6 +108,9 @@ export default function CareerHome() {
         <button className="btn-text" onClick={() => navigate('/career/jobs')}>
           {t('savedJobs')}
         </button>
+        <button className="btn-text" onClick={() => navigate('/career/search-agent')}>
+          {t('jobSearchAgent')}
+        </button>
         <button className="btn-text" onClick={() => navigate('/career/profile')}>
           {t('editProfile')}
         </button>

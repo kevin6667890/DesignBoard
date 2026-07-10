@@ -110,6 +110,63 @@ export interface CareerJob {
   updated_at: string | null;
 }
 
+
+export interface SearchPlanRequest {
+  target_role: string;
+  locations: string[];
+  term?: string | null;
+  domain?: string | null;
+  keywords: string[];
+  sources: string[];
+  remote_preference: 'remote' | 'hybrid' | 'onsite' | 'any';
+  experience_level: 'intern' | 'co-op' | 'new_grad' | 'any';
+  language: Language;
+}
+
+export interface SearchQuery {
+  source: string;
+  query: string;
+  url: string;
+  why: string;
+}
+
+export interface SearchPlanResponse {
+  search_summary: string;
+  recommended_queries: SearchQuery[];
+  source_strategy: Array<{ source: string; instructions: string }>;
+  manual_steps: string[];
+}
+
+export interface JobLead {
+  company_name: string | null;
+  role_title: string | null;
+  location: string | null;
+  source: string | null;
+  job_url: string | null;
+  application_url: string | null;
+  snippet: string | null;
+  confidence: number;
+  needs_jd: boolean;
+  reason: string | null;
+  duplicate_key?: string | null;
+  duplicate_warning?: string | null;
+}
+
+export interface ExtractSearchResponse {
+  job_leads: JobLead[];
+  ignored_items: Array<{ text?: string; reason?: string }>;
+}
+
+export interface FetchPublicResponse {
+  pages: Array<{ url: string; text: string | null; error: string | null }>;
+  job_leads: JobLead[];
+}
+
+export interface SaveLeadsResponse {
+  saved_jobs: CareerJob[];
+  duplicates: JobLead[];
+  skipped: Array<{ lead?: JobLead; reason?: string }>;
+}
 export interface SessionData {
   id: number;
   question_id: string;
@@ -339,5 +396,47 @@ export function prepareCareerInterview(jobId: number, interviewLanguage: Languag
   return fetchJson(`/career/jobs/${jobId}/prepare-interview`, {
     method: 'POST',
     body: JSON.stringify({ interview_language: interviewLanguage }),
+  });
+}
+
+export function generateSearchPlan(params: SearchPlanRequest): Promise<SearchPlanResponse> {
+  return fetchJson('/career/search/plan', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export function extractSearchLeads(params: {
+  pasted_text: string;
+  source_hint?: string;
+  target_role?: string;
+  locations?: string[];
+  language: Language;
+}): Promise<ExtractSearchResponse> {
+  return fetchJson('/career/search/extract', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export function fetchPublicSearchPages(params: {
+  urls: string[];
+  source_hint?: string;
+  language: Language;
+}): Promise<FetchPublicResponse> {
+  return fetchJson('/career/search/fetch-public', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export function saveSearchLeads(params: {
+  leads: JobLead[];
+  parse_and_score?: boolean;
+  language: Language;
+}): Promise<SaveLeadsResponse> {
+  return fetchJson('/career/search/save-leads', {
+    method: 'POST',
+    body: JSON.stringify(params),
   });
 }

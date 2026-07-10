@@ -1881,3 +1881,79 @@ textarea:focus-visible {
     margin-bottom: 12px;
   }
 }
+
+/* ===== JOB SEARCH AGENT ===== */
+.source-toggle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+
+.source-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.source-toggle input {
+  accent-color: var(--text-primary);
+}
+
+.search-agent-query {
+  grid-template-columns: 130px minmax(0, 1fr) auto auto minmax(160px, 0.7fr);
+}
+
+.search-agent-steps {
+  margin-top: 18px;
+}
+
+.fetched-page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lead-review-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lead-card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.lead-card h3 {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.lead-card p {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.lead-card-head,
+.lead-badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .search-agent-query,
+  .lead-review-list {
+    grid-template-columns: 1fr;
+  }
+}

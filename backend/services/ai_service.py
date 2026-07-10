@@ -35,16 +35,16 @@ Topics to probe naturally throughout the conversation (not all at once):
 
 INTERVIEWER_SYSTEM_PROMPT_ZH = """你是 Alex，一位资深软件工程师，正在进行系统设计面试。
 
-你的风格:
-- 简洁、专业、有评估感。不热情寒暄，也不带攻击性。
-- 每次只问一个聚焦问题。不要一次抛出多个问题。
+你的风格：
+- 简洁、专业、有评估感，不热情寒暄，也不攻击候选人。
+- 每次只问一个聚焦问题，不要一次抛出多个问题。
 - 面试中每次回复控制在 2-4 句，不讲课。
 - 不暗示正确答案，不辅导候选人。
-- 如果回答含糊，要追问: "具体是什么意思？"、"在大规模下这怎么成立？"
-- 如果回答薄弱，要追问故障、扩展性或一致性问题。
+- 如果回答含糊，要追问具体含义和规模下如何成立。
+- 如果回答较弱，要追问故障、扩展性或一致性问题。
 - 如果回答较强，马上提高难度，进入更深的子问题。
 
-自然覆盖这些方向，但不要一次性全部问完:
+自然覆盖这些方向，但不要一次性全部问完：
 1. 需求澄清 - 功能需求、非功能需求、规模假设
 2. 容量估算 - QPS、存储、带宽
 3. 高层架构 - 组件、服务、数据流
@@ -54,7 +54,6 @@ INTERVIEWER_SYSTEM_PROMPT_ZH = """你是 Alex，一位资深软件工程师，�
 7. 故障模式 - 什么会坏，如何检测，如何恢复
 
 保留必要英文技术术语，例如 API、cache、queue、shard、consistency。"""
-
 EMOTION_CONTEXT = {
     "nervous": "The candidate appears nervous. Ask a clearer, more grounded follow-up and reduce ambiguity slightly.",
     "confused": "The candidate appears confused. Reframe the question without giving away the answer.",
@@ -80,10 +79,14 @@ def _safe_list(value) -> list:
     return value if isinstance(value, list) else []
 
 
+def _safe_str(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _build_opening_message(question_title: str, interview_language: str = "en") -> str:
     if interview_language == "zh":
         return (
-            f"你好，我是 Alex。今天我们做这道系统设计题: {question_title}。"
+            f"你好，我是 Alex。今天我们做这道系统设计题：{question_title}。"
             "你有 45 分钟，请边想边说。"
             "先从需求澄清开始，你有什么问题？"
         )
@@ -92,7 +95,6 @@ def _build_opening_message(question_title: str, interview_language: str = "en") 
         "You have 45 minutes. I want you to think out loud as you go. "
         "To start - what clarifying questions do you have about the requirements?"
     )
-
 
 def _build_jd_context(profile: dict | None, blueprint: dict | None, custom_question_context: str | None) -> str:
     if not profile and not blueprint and not custom_question_context:
@@ -144,34 +146,18 @@ This was a JD-tailored interview. Also assess alignment against these role-speci
 """
         role_fit_schema = ',\n  "role_fit_summary": "..."'
 
-    return f"""You conducted a system design interview. Here is the full transcript:
-
-{transcript}
-
-{language_instruction}
-{jd_instruction}
-Evaluate the candidate on exactly these 5 dimensions, score each 0 to 10:
-
-1. requirements_clarification - Did they ask smart functional and non-functional requirements questions?
-2. system_components - Did they identify the right high-level components and explain data flow?
-3. scalability - Did they address bottlenecks, caching, sharding, failure modes?
-4. data_modeling - Did they choose appropriate databases and justify their choices?
-5. communication - Were they clear, structured, and able to think out loud coherently?
-
-Also provide:
-- missed_points: A list of exactly 3-5 specific things the candidate failed to cover or got wrong.
-- summary: 2-3 sentences of overall assessment. Be direct.
-
-Respond ONLY with valid JSON. No markdown, no explanation, no preamble:
-{{
-  "requirements_clarification": <int 0-10>,
-  "system_components": <int 0-10>,
-  "scalability": <int 0-10>,
-  "data_modeling": <int 0-10>,
-  "communication": <int 0-10>,
-  "missed_points": ["...", "...", "..."],
-  "summary": "..."{role_fit_schema}
-}}"""
+    return (
+        "You conducted a system design interview. Here is the full transcript:\n\n"
+        f"{transcript}\n\n"
+        f"{language_instruction}\n{jd_instruction}\n"
+        "Evaluate the candidate on exactly these 5 dimensions, score each 0 to 10: "
+        "requirements_clarification, system_components, scalability, data_modeling, communication.\n"
+        "Also provide missed_points as exactly 3-5 specific items and summary as 2-3 direct sentences.\n"
+        "Respond ONLY with valid JSON. No markdown, no explanation, no preamble. "
+        "Required keys: requirements_clarification, system_components, scalability, data_modeling, "
+        "communication, missed_points, summary."
+        + (" Include role_fit_summary." if scoring_focus else "")
+    )
 
 
 async def generate_opening_message(question_title: str, interview_language: str = "en") -> str:
@@ -224,7 +210,7 @@ def _fallback_profile(company_name: str | None, role_title: str | None, language
         "tech_stack": [],
         "responsibilities": [],
         "required_skills": [],
-        "interview_focus": ["system design fundamentals"] if language == "en" else ["系统设计基础"],
+        "interview_focus": ["system design fundamentals"] if language == "en" else ["绯荤粺璁捐鍩虹"],
     }
 
 
@@ -261,37 +247,22 @@ def _fallback_blueprint(language: str) -> dict:
         "scoring_focus": ["System design fundamentals", "role-relevant technical tradeoffs"],
     }
 
-
 async def analyze_jd(company_name: str | None, role_title: str | None, job_description: str, interview_language: str) -> dict:
     output_language = "Chinese" if interview_language == "zh" else "English"
-    prompt = f"""Extract a structured interview profile from this job description.
-Return ONLY valid JSON. No markdown.
-Use {output_language} for user-visible arrays and summaries.
-
-Rules:
-- Infer company_name from the JD if not provided.
-- Infer role_title from the JD if not provided.
-- seniority must be one of: intern, new_grad, junior, mid, unknown.
-- domain must be one of: backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, mobile, general.
-- tech_stack must be a flat array including languages, frameworks, databases, cloud, and tools.
-- If the JD is vague, produce a reasonable generic profile. Do not fail.
-
-Provided company_name: {company_name or ""}
-Provided role_title: {role_title or ""}
-JD:
-{job_description}
-
-JSON schema:
-{{
-  "company_name": string | null,
-  "role_title": string | null,
-  "seniority": "intern" | "new_grad" | "junior" | "mid" | "unknown",
-  "domain": "backend" | "frontend" | "fullstack" | "fintech" | "payments" | "infra" | "cloud" | "devops" | "data" | "ml_ai" | "security" | "mobile" | "general",
-  "tech_stack": string[],
-  "responsibilities": string[],
-  "required_skills": string[],
-  "interview_focus": string[]
-}}"""
+    prompt = (
+        "Extract a structured interview profile from this job description.\n"
+        "Return ONLY valid JSON. No markdown.\n"
+        f"Use {output_language} for user-visible arrays and summaries.\n\n"
+        "Rules:\n"
+        "- Infer company_name and role_title from the JD if not provided.\n"
+        "- seniority must be intern, new_grad, junior, mid, or unknown.\n"
+        "- domain must be backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, mobile, or general.\n"
+        "- tech_stack must be a flat array. If vague, produce a generic profile.\n\n"
+        "Return JSON with company_name, role_title, seniority, domain, tech_stack, responsibilities, required_skills, and interview_focus.\n\n"
+        f"Provided company_name: {company_name or ''}\n"
+        f"Provided role_title: {role_title or ''}\n"
+        f"JD:\n{job_description}"
+    )
     try:
         response = await client.chat.completions.create(
             model="deepseek-chat",
@@ -313,38 +284,15 @@ JSON schema:
 
 async def generate_blueprint(profile: dict, interview_language: str) -> dict:
     output_language = "Chinese" if interview_language == "zh" else "English"
-    prompt = f"""Generate an interview blueprint from this JD profile.
-Return ONLY valid JSON. No markdown.
-Use {output_language} for all user-visible content.
-
-For this version, make custom_system_design_questions startable and concrete.
-Other round sections are future planning.
-Question examples by domain:
-- observability/platform: metrics ingestion, alerting, log pipelines, high-throughput event processing
-- fintech/payments: payment system, ledger, fraud detection, reconciliation, idempotency, audit logs
-- frontend/fullstack: dashboard architecture, realtime collaboration, API design, state management, performance, accessibility
-
-Profile:
-{_json_dumps(profile)}
-
-JSON schema:
-{{
-  "summary": string,
-  "coding_focus": string[],
-  "cs_fundamentals_focus": string[],
-  "system_design_focus": string[],
-  "domain_deep_dive_focus": string[],
-  "behavioral_focus": string[],
-  "custom_system_design_questions": [
-    {{
-      "title": string,
-      "difficulty": "easy" | "medium" | "hard",
-      "why_relevant": string,
-      "expected_topics": string[]
-    }}
-  ],
-  "scoring_focus": string[]
-}}"""
+    prompt = (
+        "Generate an interview blueprint from this JD profile.\n"
+        "Return ONLY valid JSON. No markdown.\n"
+        f"Use {output_language} for all user-visible content.\n\n"
+        "For this version, make custom_system_design_questions startable and concrete.\n"
+        "Return JSON with summary, coding_focus, cs_fundamentals_focus, system_design_focus, "
+        "domain_deep_dive_focus, behavioral_focus, custom_system_design_questions, and scoring_focus.\n\n"
+        f"Profile:\n{_json_dumps(profile)}"
+    )
     try:
         response = await client.chat.completions.create(
             model="deepseek-chat",
@@ -397,7 +345,6 @@ def _fallback_parsed_job(company_name: str | None, role_title: str | None, locat
         "risk_flags": ["Needs JD"] if language == "en" else ["需要 JD"],
     }
 
-
 def _normalize_parsed_job(parsed: dict, company_name: str | None, role_title: str | None, location: str | None, language: str) -> dict:
     fallback = _fallback_parsed_job(company_name, role_title, location, language)
     for key, value in fallback.items():
@@ -434,58 +381,26 @@ async def parse_career_job(
         return _fallback_parsed_job(company_name, role_title, location, interview_language)
 
     output_language = "Chinese" if interview_language == "zh" else "English"
-    prompt = f"""Parse this internship or early-career job posting.
-Return ONLY strict JSON. No markdown.
-Use {output_language} for summary and list content.
-
-Rules:
-- Extract facts from the JD when present.
-- Infer cautiously only when strongly implied.
-- Use "unknown" when unsure.
-- Do not invent deadlines.
-- Do not provide immigration or legal advice; surface work authorization text as signals only.
-- employment_type must be one of: internship, co-op, new_grad, full_time, unknown.
-- domain must be one of: backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, mobile, general.
-- ats_or_platform must be one of: greenhouse, lever, workday, linkedin, indeed, company_site, unknown.
-
-Optional candidate profile context:
-{_json_dumps(candidate_profile or {})}
-
-Provided company_name: {company_name or ""}
-Provided role_title: {role_title or ""}
-Provided location: {location or ""}
-
-Job description:
-{raw_job_description}
-
-JSON schema:
-{{
-  "company_name": string | null,
-  "role_title": string | null,
-  "location": string | null,
-  "employment_type": "internship" | "co-op" | "new_grad" | "full_time" | "unknown",
-  "term": string,
-  "domain": "backend" | "frontend" | "fullstack" | "fintech" | "payments" | "infra" | "cloud" | "devops" | "data" | "ml_ai" | "security" | "mobile" | "general",
-  "tech_stack": {{
-    "languages": string[],
-    "frontend": string[],
-    "backend": string[],
-    "databases": string[],
-    "cloud_devops": string[],
-    "ai_tools": string[],
-    "testing": string[],
-    "other": string[]
-  }},
-  "responsibilities": string[],
-  "required_skills": string[],
-  "nice_to_have": string[],
-  "application_requirements": string[],
-  "deadline": string | null,
-  "work_authorization_signals": string[],
-  "ats_or_platform": "greenhouse" | "lever" | "workday" | "linkedin" | "indeed" | "company_site" | "unknown",
-  "summary": string,
-  "risk_flags": string[]
-}}"""
+    prompt = (
+        "Parse this internship or early-career job posting.\n"
+        "Return ONLY strict JSON. No markdown.\n"
+        f"Use {output_language} for summary and list content.\n\n"
+        "Rules:\n"
+        "- Extract facts from the JD when present.\n"
+        "- Infer cautiously only when strongly implied. Use unknown when unsure.\n"
+        "- Do not invent deadlines or provide immigration/legal advice.\n"
+        "- employment_type must be internship, co-op, new_grad, full_time, or unknown.\n"
+        "- domain must be backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, mobile, or general.\n"
+        "- ats_or_platform must be greenhouse, lever, workday, linkedin, indeed, company_site, or unknown.\n\n"
+        "Return JSON with company_name, role_title, location, employment_type, term, domain, tech_stack, "
+        "responsibilities, required_skills, nice_to_have, application_requirements, deadline, "
+        "work_authorization_signals, ats_or_platform, summary, and risk_flags.\n\n"
+        f"Optional candidate profile context:\n{_json_dumps(candidate_profile or {})}\n\n"
+        f"Provided company_name: {company_name or ''}\n"
+        f"Provided role_title: {role_title or ''}\n"
+        f"Provided location: {location or ''}\n\n"
+        f"Job description:\n{raw_job_description}"
+    )
     try:
         response = await client.chat.completions.create(
             model="deepseek-chat",
@@ -537,7 +452,6 @@ def _fallback_fit_score(language: str) -> dict:
         "next_action": "needs_more_info",
     }
 
-
 def _normalize_fit_score(score: dict, language: str) -> dict:
     fallback = _fallback_fit_score(language)
     for key, value in fallback.items():
@@ -576,45 +490,22 @@ async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_
         return _fallback_fit_score(interview_language)
 
     output_language = "Chinese" if interview_language == "zh" else "English"
-    prompt = f"""Compare this parsed job against the candidate profile and produce a practical internship fit score.
-Return ONLY strict JSON. No markdown.
-Use {output_language} for all user-visible content.
-
-Rules:
-- High score does not guarantee an interview.
-- Low score does not automatically mean skip.
-- Be conservative and practical.
-- Penalize unclear seniority mismatch.
-- Penalize obvious full-time roles if the candidate targets internships.
-- Reward strong project and tech overlap.
-- Reward location or remote compatibility.
-- Surface work authorization uncertainty as a risk flag, not a legal conclusion.
-
-Parsed job:
-{_json_dumps(parsed_job)}
-
-Candidate profile:
-{_json_dumps(candidate_profile)}
-
-JSON schema:
-{{
-  "overall_score": <int 0-100>,
-  "priority": "high" | "medium" | "low",
-  "summary": string,
-  "breakdown": {{
-    "role_match": <int 0-100>,
-    "tech_stack_match": <int 0-100>,
-    "location_match": <int 0-100>,
-    "experience_level_match": <int 0-100>,
-    "project_relevance": <int 0-100>,
-    "application_risk": <int 0-100>
-  }},
-  "matched_strengths": string[],
-  "gaps": string[],
-  "recommended_resume_keywords": string[],
-  "recommended_projects_to_highlight": string[],
-  "next_action": "apply_now" | "tailor_resume" | "research_company" | "skip" | "needs_more_info"
-}}"""
+    prompt = (
+        "Compare this parsed job against the candidate profile and produce a practical internship fit score.\n"
+        "Return ONLY strict JSON. No markdown.\n"
+        f"Use {output_language} for all user-visible content.\n\n"
+        "Rules:\n"
+        "- High score does not guarantee an interview.\n"
+        "- Low score does not automatically mean skip.\n"
+        "- Be conservative and practical.\n"
+        "- Penalize unclear seniority mismatch and obvious full-time roles if internships are targeted.\n"
+        "- Reward strong project, tech, location, and remote compatibility.\n"
+        "- Surface work authorization uncertainty as a risk flag, not legal advice.\n\n"
+        "Return JSON with overall_score, priority, summary, breakdown, matched_strengths, gaps, "
+        "recommended_resume_keywords, recommended_projects_to_highlight, and next_action.\n\n"
+        f"Parsed job:\n{_json_dumps(parsed_job)}\n\n"
+        f"Candidate profile:\n{_json_dumps(candidate_profile)}"
+    )
     try:
         response = await client.chat.completions.create(
             model="deepseek-chat",
@@ -625,3 +516,194 @@ JSON schema:
     except Exception:
         score = _fallback_fit_score(interview_language)
     return _normalize_fit_score(score, interview_language)
+
+
+def generate_job_search_plan(request: dict) -> dict:
+    role = _safe_str(request.get("target_role")) or "Software Engineer Intern"
+    locations = [_safe_str(item) for item in _safe_list(request.get("locations")) if _safe_str(item)]
+    term = _safe_str(request.get("term"))
+    domain = _safe_str(request.get("domain"))
+    keywords = [_safe_str(item) for item in _safe_list(request.get("keywords")) if _safe_str(item)]
+    sources = _safe_list(request.get("sources")) or ["Google", "Company Careers", "Greenhouse", "Lever", "Manual Paste"]
+    remote = _safe_str(request.get("remote_preference")) or "any"
+    level = _safe_str(request.get("experience_level")) or "intern"
+    language = request.get("language") if request.get("language") in ["en", "zh"] else "en"
+
+    location_phrase = " ".join(locations) if locations else "Canada"
+    primary_location = locations[0] if locations else "Canada"
+    term_part = f' "{term}"' if term else ""
+    keyword_part = " ".join(f'"{kw}"' for kw in keywords[:5])
+    level_terms = {
+        "intern": "intern internship",
+        "co-op": "co-op internship",
+        "new_grad": "new grad",
+        "any": "intern co-op new grad",
+    }.get(level, "intern internship")
+    remote_part = "" if remote == "any" else f' "{remote}"'
+
+    templates = [
+        ("Google", f'"{role}" "{primary_location}"{term_part} {level_terms} {keyword_part}'.strip(), "Broad search across public job pages."),
+        ("Greenhouse", f'site:greenhouse.io "{role}" "{location_phrase}"{term_part}'.strip(), "Find public Greenhouse-hosted postings."),
+        ("Lever", f'site:lever.co "{role}" "{location_phrase}"{term_part}'.strip(), "Find public Lever-hosted postings."),
+        ("Company Careers", f'"{role}" "{primary_location}" "careers"{term_part} {keyword_part}'.strip(), "Find company career pages that may not be indexed by job boards."),
+        ("Wellfound", f'"{role}" startup "{primary_location}"{term_part}'.strip(), "Check startup internships manually from public result pages."),
+        ("Job Bank", f'"{role}" "Job Bank" "{primary_location}"'.strip(), "Check public Canadian Job Bank pages where available."),
+        ("University Career Portal", f'"{role}" "{primary_location}" "co-op"{term_part}'.strip(), "Use this as a prompt for university portals you can access manually."),
+    ]
+    if remote != "any":
+        templates.insert(1, ("Google", f'"{role}" "{location_phrase}"{remote_part}{term_part} {level_terms}'.strip(), "Target roles matching the remote or onsite preference."))
+    if domain:
+        templates.append(("Google", f'"{role}" "{primary_location}" "{domain}"{term_part} {keyword_part}'.strip(), "Narrow public results by domain and skills."))
+
+    selected = set(str(source) for source in sources)
+    include_google = "Google" in selected
+    recommended = []
+    seen = set()
+    for source, query, why in templates:
+        if source != "Google" and source not in selected and source not in ["Greenhouse", "Lever"]:
+            continue
+        if source == "Google" and not include_google:
+            continue
+        key = (source, query.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        recommended.append({
+            "source": source,
+            "query": query,
+            "url": f"https://www.google.com/search?q={query.replace(' ', '+')}",
+            "why": why if language == "en" else "用于打开公开搜索结果；结果需要人工核对。",
+        })
+
+    if language == "zh":
+        summary = f"围绕 {role} 在 {location_phrase} 的机会生成公开搜索计划。结果不是完整覆盖，请手动核对岗位真实性和申请要求。"
+        manual_steps = [
+            "打开搜索链接并人工筛选公开岗位。",
+            "从 LinkedIn、Indeed、Glassdoor 等平台复制可见结果文本，不要让系统登录或抓取。",
+            "把搜索摘要或公开页面文本粘贴到导入区提取线索。",
+            "保存前检查重复项、URL 和是否需要补充 JD。",
+        ]
+        source_strategy = [
+            {"source": "Company Careers", "instructions": "优先查看公司官网 careers 页面和学生项目页面。"},
+            {"source": "Greenhouse / Lever", "instructions": "只打开公开岗位页面；如果无法访问，请手动粘贴文本。"},
+            {"source": "Manual Paste", "instructions": "对登录后平台，仅复制你能看到的文本进行整理。"},
+        ]
+    else:
+        summary = f"Public-search plan for {role} around {location_phrase}. Treat this as a guided search, not an exhaustive crawler."
+        manual_steps = [
+            "Open the search links and manually review public results.",
+            "For LinkedIn, Indeed, Glassdoor, or private portals, copy visible text yourself instead of scraping.",
+            "Paste result snippets or public page text into Import Search Results.",
+            "Review duplicates, URLs, and Needs JD flags before saving leads.",
+        ]
+        source_strategy = [
+            {"source": "Company Careers", "instructions": "Prioritize company careers pages and student program pages for fresher postings."},
+            {"source": "Greenhouse / Lever", "instructions": "Open only public posting pages. If fetch fails, paste the text manually."},
+            {"source": "Manual Paste", "instructions": "Use copied text from platforms that require a logged-in or interactive session."},
+        ]
+
+    return {
+        "search_summary": summary,
+        "recommended_queries": recommended[:12],
+        "source_strategy": source_strategy,
+        "manual_steps": manual_steps,
+    }
+
+
+def _normalize_job_lead(lead: dict, source_hint: str | None = None) -> dict:
+    confidence = lead.get("confidence", 0)
+    try:
+        confidence = max(0, min(100, int(confidence)))
+    except (TypeError, ValueError):
+        confidence = 0
+    return {
+        "company_name": _safe_str(lead.get("company_name")) or None,
+        "role_title": _safe_str(lead.get("role_title")) or None,
+        "location": _safe_str(lead.get("location")) or None,
+        "source": _safe_str(lead.get("source")) or source_hint or "Manual",
+        "job_url": _safe_str(lead.get("job_url")) or None,
+        "application_url": _safe_str(lead.get("application_url")) or None,
+        "snippet": _safe_str(lead.get("snippet"))[:4000] or None,
+        "confidence": confidence,
+        "needs_jd": bool(lead.get("needs_jd", True)),
+        "reason": _safe_str(lead.get("reason")) or "Extracted from pasted text.",
+    }
+
+
+def _fallback_extract_job_leads(pasted_text: str, source_hint: str | None, language: str) -> dict:
+    lines = [line.strip() for line in pasted_text.splitlines() if line.strip()]
+    leads = []
+    ignored = []
+    role_markers = ["intern", "internship", "co-op", "coop", "new grad", "software", "developer", "engineer", "backend", "frontend", "full-stack", "fullstack", "ai", "ml", "data"]
+    url = None
+    for idx, line in enumerate(lines):
+        if line.startswith("http://") or line.startswith("https://"):
+            url = line
+            continue
+        lower = line.lower()
+        if not any(marker in lower for marker in role_markers):
+            if len(ignored) < 12:
+                ignored.append({"text": line[:160], "reason": "No role signal"})
+            continue
+        company = None
+        title = line
+        for sep in [" - ", " | ", " at ", " @ "]:
+            if sep in line:
+                parts = line.split(sep, 1)
+                title, company = parts[0], parts[1]
+                break
+        snippet = " ".join(lines[idx:idx + 3])[:700]
+        leads.append(_normalize_job_lead({
+            "company_name": company,
+            "role_title": title[:180],
+            "location": None,
+            "source": source_hint or "Manual",
+            "job_url": url,
+            "application_url": url,
+            "snippet": snippet,
+            "confidence": 45,
+            "needs_jd": True,
+            "reason": "Fallback extraction from role-like text." if language == "en" else "从疑似岗位文本中进行兜底提取。",
+        }, source_hint))
+        url = None
+        if len(leads) >= 20:
+            break
+    return {"job_leads": leads, "ignored_items": ignored}
+
+
+async def extract_job_leads(pasted_text: str, source_hint: str | None, target_role: str | None, locations: list[str] | None, language: str) -> dict:
+    text = pasted_text.strip()
+    if not text:
+        return {"job_leads": [], "ignored_items": []}
+    output_language = "Chinese" if language == "zh" else "English"
+    prompt = (
+        "Extract plausible internship or early-career job leads from pasted search result or public page text.\n"
+        "Return ONLY strict JSON. No markdown.\n"
+        f"Use {output_language} for reason fields.\n\n"
+        "Rules:\n"
+        "- Extract only plausible job postings.\n"
+        "- Ignore ads, navigation, repeated boilerplate, unrelated pages, and generic company pages.\n"
+        "- Do not invent URLs, deadlines, companies, or application links.\n"
+        "- If URL is unavailable, use null.\n"
+        "- If a full job description is not present, set needs_jd true.\n"
+        "- confidence is 0-100 based on how clearly this is a job posting.\n\n"
+        "Return JSON with this shape: job_leads is an array of objects with company_name, role_title, "
+        "location, source, job_url, application_url, snippet, confidence, needs_jd, reason; "
+        "ignored_items is an array of objects with text and reason.\n\n"
+        f"Source hint: {source_hint or 'unknown'}\n"
+        f"Target role: {target_role or ''}\n"
+        f"Target locations: {_json_dumps(locations or [])}\n\n"
+        f"Text:\n{text[:18000]}"
+    )
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=3200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        parsed = _extract_json_object(response.choices[0].message.content)
+        leads = [_normalize_job_lead(lead, source_hint) for lead in _safe_list(parsed.get("job_leads"))]
+        ignored = _safe_list(parsed.get("ignored_items"))
+        return {"job_leads": leads, "ignored_items": ignored[:30]}
+    except Exception:
+        return _fallback_extract_job_leads(text, source_hint, language)
