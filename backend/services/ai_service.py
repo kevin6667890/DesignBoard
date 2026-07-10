@@ -671,6 +671,218 @@ def _fallback_extract_job_leads(pasted_text: str, source_hint: str | None, langu
     return {"job_leads": leads, "ignored_items": ignored}
 
 
+async def analyze_pasted_job_page(
+    pasted_page_text: str,
+    source_hint: str | None,
+    job_url: str | None,
+    application_url: str | None,
+    candidate_profile: dict | None,
+    language: str,
+) -> dict:
+    """
+    Analyze a full pasted job page text.
+    Returns is_job_posting, confidence, extracted_job, fit, cleaned_jd_text, ignored_noise.
+    """
+    text = pasted_page_text.strip()
+    if not text:
+        return {
+            "is_job_posting": False,
+            "confidence": 0,
+            "reason": "Empty text provided." if language == "en" else "未提供文本。",
+            "possible_next_steps": ["Paste the full job posting page text."] if language == "en" else ["请粘贴完整的岗位页面文本。"],
+        }
+
+    output_language = "Chinese" if language == "zh" else "English"
+    profile_json = _json_dumps(candidate_profile or {})
+
+    prompt = f"""You are a precise job posting parser. Analyze the following pasted page text and:
+1. Determine if it is a real job posting (not a generic company page, not a blog, not navigation-only).
+2. If it is a job posting, extract all structured fields.
+3. Evaluate fit against the candidate profile.
+
+Return ONLY strict JSON. No markdown, no preamble, no explanation.
+Use {output_language} for all user-visible text (summaries, reasons, bullet points).
+Keep technical terms (API, Python, BGP, Kubernetes, etc.) as-is in all languages.
+
+=== NOISE REMOVAL RULES ===
+- Remove: page navigation, cookie banners, footers, company marketing slogans, social media links, repeated boilerplate, unrelated sections.
+- Keep: role title, company name, location, requirements, responsibilities, salary, deadline, application instructions, tech stack mentions.
+
+=== EXTRACTION RULES ===
+- experience_level: must be one of: intern, co-op, new_grad, junior, mid, senior, experienced, unknown
+  - Use "experienced" if the role explicitly requires 5+ years or is clearly not entry-level/internship
+  - Use "intern" or "co-op" only if the posting explicitly uses those terms
+- employment_type: must be one of: internship, co-op, new_grad, full_time, contract, unknown
+- domain: must be one of: backend, frontend, fullstack, fintech, payments, infra, cloud, devops, data, ml_ai, security, network, mobile, general
+- Do NOT invent deadlines, salary, or URLs not present in the text
+- Use null or empty array when information is absent
+- For risk_flags, check: experienced role, seniority mismatch, not internship, location mismatch, work authorization unclear, missing JD body, no application link, unrelated role
+
+=== FIT DECISION RULES ===
+Compare extracted job against candidate profile:
+- "apply": strong match on role type, level, location, and core skills
+- "maybe": partial match, worth considering despite some gaps
+- "skip": obvious mismatch (e.g., experienced role requiring 5+ years when candidate targets internships; unrelated domain)
+- "needs_more_info": JD text is too sparse to evaluate reliably
+
+=== OUTPUT SCHEMA ===
+If IS a job posting, return:
+{{
+  "is_job_posting": true,
+  "confidence": <0-100>,
+  "extracted_job": {{
+    "company_name": <string|null>,
+    "role_title": <string|null>,
+    "location": <string|null>,
+    "experience_level": <"intern"|"co-op"|"new_grad"|"junior"|"mid"|"senior"|"experienced"|"unknown">,
+    "employment_type": <"internship"|"co-op"|"new_grad"|"full_time"|"contract"|"unknown">,
+    "term": <string|null>,
+    "domain": <"backend"|"frontend"|"fullstack"|"fintech"|"payments"|"infra"|"cloud"|"devops"|"data"|"ml_ai"|"security"|"network"|"mobile"|"general">,
+    "source": <string|null>,
+    "job_url": <string|null>,
+    "application_url": <string|null>,
+    "salary_range": <string|null>,
+    "deadline": <string|null>,
+    "application_checklist": <array of strings>,
+    "tech_stack": {{
+      "languages": [],
+      "frontend": [],
+      "backend": [],
+      "databases": [],
+      "cloud_devops": [],
+      "networking": [],
+      "ai_tools": [],
+      "testing": [],
+      "other": []
+    }},
+    "responsibilities": <array of strings>,
+    "requirements": <array of strings>,
+    "nice_to_have": <array of strings>,
+    "risk_flags": <array of strings>,
+    "summary": <string>
+  }},
+  "fit": {{
+    "overall_score": <0-100>,
+    "decision": <"apply"|"maybe"|"skip"|"needs_more_info">,
+    "priority": <"high"|"medium"|"low">,
+    "summary": <string>,
+    "main_reason": <string>,
+    "breakdown": {{
+      "role_match": <0-100>,
+      "tech_stack_match": <0-100>,
+      "location_match": <0-100>,
+      "experience_level_match": <0-100>,
+      "project_relevance": <0-100>,
+      "application_risk": <0-100>
+    }},
+    "matched_strengths": <array of strings>,
+    "gaps": <array of strings>,
+    "risk_flags": <array of strings>,
+    "recommended_resume_keywords": <array of strings>,
+    "recommended_projects_to_highlight": <array of strings>,
+    "next_action": <"apply_now"|"tailor_resume"|"research_company"|"skip"|"needs_more_info">
+  }},
+  "cleaned_jd_text": <string — clean job description body, noise removed>,
+  "ignored_noise": <array of short strings describing what was removed>
+}}
+
+If NOT a job posting, return:
+{{
+  "is_job_posting": false,
+  "confidence": <0-100>,
+  "reason": <string explaining what this page appears to be>,
+  "possible_next_steps": <array of strings>
+}}
+
+=== INPUTS ===
+Source hint: {source_hint or "unknown"}
+Job URL hint: {job_url or ""}
+Application URL hint: {application_url or ""}
+Candidate profile: {profile_json}
+
+Pasted page text (may contain noise):
+{text[:25000]}
+"""
+
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.choices[0].message.content
+        result = _extract_json_object(raw)
+    except Exception as exc:
+        # Robust fallback
+        return {
+            "is_job_posting": False,
+            "confidence": 0,
+            "reason": f"Analysis failed: {exc}" if language == "en" else f"分析失败：{exc}",
+            "possible_next_steps": [
+                "Try again with a shorter or cleaner paste.",
+                "Manually fill in the job details using Add Job.",
+            ] if language == "en" else [
+                "请尝试粘贴更短或更干净的文本。",
+                "也可以通过【添加岗位】手动填写岗位信息。",
+            ],
+        }
+
+    # Normalize result
+    if not result.get("is_job_posting"):
+        return {
+            "is_job_posting": False,
+            "confidence": max(0, min(100, int(result.get("confidence", 0)))),
+            "reason": _safe_str(result.get("reason")) or ("Does not appear to be a job posting." if language == "en" else "看起来不是一个岗位页面。"),
+            "possible_next_steps": _safe_list(result.get("possible_next_steps")),
+        }
+
+    extracted = result.get("extracted_job") or {}
+    fit = result.get("fit") or {}
+
+    # Normalize extracted_job
+    tech_stack_fallback = {"languages": [], "frontend": [], "backend": [], "databases": [], "cloud_devops": [], "networking": [], "ai_tools": [], "testing": [], "other": []}
+    ts = extracted.get("tech_stack") if isinstance(extracted.get("tech_stack"), dict) else {}
+    for k in tech_stack_fallback:
+        ts.setdefault(k, [])
+        if not isinstance(ts[k], list):
+            ts[k] = []
+    extracted["tech_stack"] = ts
+    extracted["job_url"] = extracted.get("job_url") or job_url
+    extracted["application_url"] = extracted.get("application_url") or application_url
+    extracted["source"] = extracted.get("source") or source_hint or "Pasted Page"
+    for key in ["responsibilities", "requirements", "nice_to_have", "application_checklist", "risk_flags"]:
+        extracted[key] = _safe_list(extracted.get(key))
+
+    # Normalize fit
+    valid_decisions = {"apply", "maybe", "skip", "needs_more_info"}
+    valid_next_actions = {"apply_now", "tailor_resume", "research_company", "skip", "needs_more_info"}
+    fit["decision"] = fit.get("decision") if fit.get("decision") in valid_decisions else "needs_more_info"
+    fit["priority"] = fit.get("priority") if fit.get("priority") in {"high", "medium", "low"} else "low"
+    fit["next_action"] = fit.get("next_action") if fit.get("next_action") in valid_next_actions else "needs_more_info"
+    try:
+        fit["overall_score"] = max(0, min(100, int(fit.get("overall_score", 0))))
+    except (TypeError, ValueError):
+        fit["overall_score"] = 0
+    breakdown = fit.get("breakdown") if isinstance(fit.get("breakdown"), dict) else {}
+    for k in ["role_match", "tech_stack_match", "location_match", "experience_level_match", "project_relevance", "application_risk"]:
+        try:
+            breakdown[k] = max(0, min(100, int(breakdown.get(k, 0))))
+        except (TypeError, ValueError):
+            breakdown[k] = 0
+    fit["breakdown"] = breakdown
+    for key in ["matched_strengths", "gaps", "risk_flags", "recommended_resume_keywords", "recommended_projects_to_highlight"]:
+        fit[key] = _safe_list(fit.get(key))
+
+    return {
+        "is_job_posting": True,
+        "confidence": max(0, min(100, int(result.get("confidence", 80)))),
+        "extracted_job": extracted,
+        "fit": fit,
+        "cleaned_jd_text": _safe_str(result.get("cleaned_jd_text")) or text[:10000],
+        "ignored_noise": _safe_list(result.get("ignored_noise")),
+    }
+
+
 async def extract_job_leads(pasted_text: str, source_hint: str | None, target_role: str | None, locations: list[str] | None, language: str) -> dict:
     text = pasted_text.strip()
     if not text:

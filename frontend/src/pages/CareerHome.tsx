@@ -101,18 +101,42 @@ export default function CareerHome() {
       </header>
       <LanguageControls />
 
-      <div className="career-actions">
-        <button className="btn-filled" onClick={() => navigate('/career/jobs/new')} id="career-add-job">
-          {t('addJob')}
+      {/* Primary CTA: Paste Job Page */}
+      <section
+        className="career-panel paste-job-hero"
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate('/career/paste-job')}
+        onKeyDown={(e) => e.key === 'Enter' && navigate('/career/paste-job')}
+        aria-label={t('pasteJobPage')}
+        id="career-paste-job-cta"
+      >
+        <div className="paste-hero-icon">📋</div>
+        <div className="paste-hero-content">
+          <h2>{t('pasteAnyJobPosting')}</h2>
+          <p>{t('pasteAnyJobPostingDesc')}</p>
+        </div>
+        <button
+          className="btn-filled paste-hero-btn"
+          onClick={(e) => { e.stopPropagation(); navigate('/career/paste-job'); }}
+          id="career-paste-job-btn"
+        >
+          {t('pasteJobPage')} →
         </button>
+      </section>
+
+      <div className="career-actions">
         <button className="btn-text" onClick={() => navigate('/career/jobs')}>
           {t('savedJobs')}
+        </button>
+        <button className="btn-text" onClick={() => navigate('/career/profile')}>
+          {t('editProfile')}
         </button>
         <button className="btn-text" onClick={() => navigate('/career/search-agent')}>
           {t('jobSearchAgent')}
         </button>
-        <button className="btn-text" onClick={() => navigate('/career/profile')}>
-          {t('editProfile')}
+        <button className="btn-text" onClick={() => navigate('/career/jobs/new')} id="career-add-job">
+          {t('addJob')}
         </button>
       </div>
 
@@ -169,7 +193,7 @@ export default function CareerHome() {
         ) : (
           <EmptyState
             message={t('noJobsYet')}
-            action={{ label: t('addJob'), onClick: () => navigate('/career/jobs/new') }}
+            action={{ label: t('pasteJobPage'), onClick: () => navigate('/career/paste-job') }}
           />
         )}
       </section>

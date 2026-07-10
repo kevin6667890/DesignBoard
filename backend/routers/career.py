@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as SQLSession
 from database import get_db
 from models import CandidateProfile, CareerJob, InterviewBlueprint, JDProfile
 from routers.jd import blueprint_to_dict, profile_to_dict
-from services.ai_service import analyze_jd, extract_job_leads, generate_blueprint, generate_job_search_plan, parse_career_job, score_career_job
+from services.ai_service import analyze_jd, analyze_pasted_job_page, extract_job_leads, generate_blueprint, generate_job_search_plan, parse_career_job, score_career_job
 
 router = APIRouter()
 
@@ -404,6 +404,177 @@ async def save_search_leads(req: SaveLeadsRequest, db: SQLSession = Depends(get_
         saved_jobs.append(_job_to_dict(job))
 
     return {"saved_jobs": saved_jobs, "duplicates": duplicates, "skipped": skipped}
+
+class PasteAnalyzeRequest(BaseModel):
+    pasted_page_text: str
+    source_hint: str | None = "unknown"
+    job_url: str | None = None
+    application_url: str | None = None
+    notes: str | None = None
+    language: Literal["en", "zh"] = "en"
+
+
+class PasteSaveRequest(BaseModel):
+    analysis_result: dict
+    save_mode: Literal["save_only", "save_parse_score", "save_prepare_interview"] = "save_only"
+    language: Literal["en", "zh"] = "en"
+
+
+@router.post("/career/paste/analyze")
+async def paste_analyze(req: PasteAnalyzeRequest, db: SQLSession = Depends(get_db)):
+    if not req.pasted_page_text.strip():
+        raise HTTPException(status_code=400, detail="pasted_page_text is required")
+    profile = _profile_to_dict(_active_profile(db))
+    return await analyze_pasted_job_page(
+        req.pasted_page_text,
+        req.source_hint,
+        req.job_url,
+        req.application_url,
+        profile,
+        req.language,
+    )
+
+
+@router.post("/career/paste/save")
+async def paste_save(req: PasteSaveRequest, db: SQLSession = Depends(get_db)):
+    result = req.analysis_result
+    if not result.get("is_job_posting"):
+        raise HTTPException(status_code=400, detail="Cannot save: analysis result is not a job posting")
+
+    extracted = result.get("extracted_job") or {}
+    fit = result.get("fit") or {}
+    cleaned_jd = result.get("cleaned_jd_text") or ""
+
+    # Determine status from fit decision
+    decision = fit.get("decision", "needs_more_info")
+    if decision in ("apply", "maybe"):
+        status = "ready_to_apply"
+    else:
+        status = "saved"
+
+    priority = fit.get("priority") or "unknown"
+    if priority not in PRIORITIES:
+        priority = "unknown"
+
+    notes_parts = ["Created from Pasted Job Page."]
+    if result.get("ignored_noise"):
+        noise_count = len(result["ignored_noise"])
+        notes_parts.append(f"Noise removed: {noise_count} items.")
+
+    job = CareerJob(
+        company_name=extracted.get("company_name"),
+        role_title=extracted.get("role_title"),
+        location=extracted.get("location"),
+        job_url=extracted.get("job_url"),
+        application_url=extracted.get("application_url"),
+        source=extracted.get("source") or "Pasted Page",
+        raw_job_description=cleaned_jd or None,
+        parsed_job_json=None,
+        fit_score=fit.get("overall_score"),
+        fit_summary=fit.get("summary"),
+        fit_breakdown_json=_dumps(fit) if fit else None,
+        status=status,
+        priority=priority,
+        notes="\n".join(notes_parts),
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    # Build a parsed_job structure from extracted data (compatible with existing schema)
+    parsed_job_struct = {
+        "company_name": extracted.get("company_name"),
+        "role_title": extracted.get("role_title"),
+        "location": extracted.get("location"),
+        "employment_type": extracted.get("employment_type", "unknown"),
+        "term": extracted.get("term") or "",
+        "domain": extracted.get("domain", "general"),
+        "tech_stack": extracted.get("tech_stack", {}),
+        "responsibilities": extracted.get("responsibilities", []),
+        "required_skills": extracted.get("requirements", []),
+        "nice_to_have": extracted.get("nice_to_have", []),
+        "application_requirements": extracted.get("application_checklist", []),
+        "deadline": extracted.get("deadline"),
+        "work_authorization_signals": [],
+        "ats_or_platform": extracted.get("source") or "unknown",
+        "summary": extracted.get("summary", ""),
+        "risk_flags": extracted.get("risk_flags", []),
+    }
+    job.parsed_job_json = _dumps(parsed_job_struct)
+    db.commit()
+    db.refresh(job)
+
+    prepared_interview = None
+    next_route = f"/career/jobs/{job.id}"
+
+    if req.save_mode == "save_parse_score" and cleaned_jd:
+        # Re-score with full pipeline
+        profile = _profile_to_dict(_active_profile(db))
+        score = await score_career_job(parsed_job_struct, profile, req.language)
+        job.fit_score = score.get("overall_score")
+        job.priority = score.get("priority") or priority
+        job.fit_summary = score.get("summary")
+        job.fit_breakdown_json = _dumps(score)
+        job.updated_at = _now()
+        db.commit()
+        db.refresh(job)
+        next_route = f"/career/jobs/{job.id}"
+
+    elif req.save_mode == "save_prepare_interview" and cleaned_jd:
+        try:
+            profile_data = await analyze_jd(
+                job.company_name, job.role_title, cleaned_jd, req.language
+            )
+            blueprint_data = await generate_blueprint(profile_data, req.language)
+
+            jd_profile = JDProfile(
+                company_name=profile_data.get("company_name"),
+                role_title=profile_data.get("role_title"),
+                seniority=profile_data.get("seniority") or "unknown",
+                domain=profile_data.get("domain") or "general",
+                tech_stack_json=_dumps(profile_data.get("tech_stack") or []),
+                responsibilities_json=_dumps(profile_data.get("responsibilities") or []),
+                required_skills_json=_dumps(profile_data.get("required_skills") or []),
+                interview_focus_json=_dumps(profile_data.get("interview_focus") or []),
+                source_jd_text=cleaned_jd,
+                language=req.language,
+            )
+            db.add(jd_profile)
+            db.commit()
+            db.refresh(jd_profile)
+
+            blueprint = InterviewBlueprint(
+                profile_id=jd_profile.id,
+                summary=blueprint_data.get("summary") or "",
+                coding_focus_json=_dumps(blueprint_data.get("coding_focus") or []),
+                cs_fundamentals_focus_json=_dumps(blueprint_data.get("cs_fundamentals_focus") or []),
+                system_design_focus_json=_dumps(blueprint_data.get("system_design_focus") or []),
+                domain_deep_dive_focus_json=_dumps(blueprint_data.get("domain_deep_dive_focus") or []),
+                behavioral_focus_json=_dumps(blueprint_data.get("behavioral_focus") or []),
+                custom_system_design_questions_json=_dumps(blueprint_data.get("custom_system_design_questions") or []),
+                scoring_focus_json=_dumps(blueprint_data.get("scoring_focus") or []),
+            )
+            db.add(blueprint)
+            db.commit()
+            db.refresh(blueprint)
+
+            prepared_interview = {
+                "profile": profile_to_dict(jd_profile),
+                "blueprint": blueprint_to_dict(blueprint),
+            }
+            next_route = "/custom"
+        except Exception:
+            # If interview prep fails, still return the saved job
+            next_route = f"/career/jobs/{job.id}"
+
+    return {
+        "job": _job_to_dict(job),
+        "prepared_interview": prepared_interview,
+        "next_route": next_route,
+    }
+
 
 @router.get("/career/profile")
 def get_candidate_profile(db: SQLSession = Depends(get_db)):

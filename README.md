@@ -86,15 +86,13 @@ Company web research is planned but not implemented. Coding/editor rounds are pl
 
 ## Career Mode / Internship Radar
 
-Career Mode helps a CS student organize Canadian internship opportunities without scraping job boards or automating applications.
+Career Mode helps a CS student organize Canadian internship opportunities.
 
 - **Candidate profile** - Store target roles, target locations, education, skills, projects, work authorization notes, and preferences locally in SQLite.
-- **Job intake** - Manually save pasted job descriptions, job posting URLs, application URLs, source, status, priority, and notes.
-- **AI JD parsing** - DeepSeek extracts company, role, location, term, domain, tech stack, responsibilities, requirements, platform hints, summaries, and risk flags from pasted JDs.
-- **Fit scoring** - Compares parsed jobs against the candidate profile and returns a conservative score, priority, strengths, gaps, resume keywords, project highlights, and next action.
+- **Paste Job Page (Recommended)** - Copy any job posting page, paste it into DesignBoard, and the app extracts structured fields, evaluates fit, and saves it into the tracker.
+- **Job Search Agent** - A secondary helper that generates search plans, Google query links, and imports public job links.
 - **Application tracking** - Track saved, ready to apply, applied, OA, interview, rejected, offer, and archived statuses with quick updates.
-- **Search query generator** - Generates copyable search queries and safe Google search links for internship channels such as Greenhouse, Lever, LinkedIn, Indeed, company career pages, Wellfound, Job Bank, and university portals.
-- **Interview preparation handoff** - Sends a saved job with a pasted JD into the existing JD-tailored interview planner so the user can generate a blueprint and start a custom system design interview.
+- **Interview preparation handoff** - Sends a saved job into the existing JD-tailored interview planner so the user can generate a blueprint and start a custom system design interview.
 
 Career Mode does not scrape LinkedIn, Indeed, Glassdoor, or protected platforms. It does not auto-apply, bypass rate limits, handle captchas, or provide legal/immigration advice.
 

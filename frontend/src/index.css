@@ -1957,3 +1957,179 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== PASTE JOB PAGE (v4.3) ===== */
+
+/* Hero CTA card on CareerHome */
+.paste-job-hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  cursor: pointer;
+  border: 1px solid #3a3a3a;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.paste-job-hero:hover,
+.paste-job-hero:focus-visible {
+  border-color: #4ade80;
+  box-shadow: 0 0 0 1px #4ade8033;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.paste-hero-icon {
+  font-size: 36px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.paste-hero-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.paste-hero-content h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.paste-hero-content p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.paste-hero-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Paste form */
+.paste-job-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.paste-job-textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 200px;
+  transition: border-color 0.15s;
+}
+
+.paste-job-textarea:focus {
+  outline: none;
+  border-color: var(--border-hover);
+}
+
+.paste-warning {
+  color: #facc15;
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+.paste-optional-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.paste-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paste-field input,
+.paste-field select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.paste-field select option {
+  background: var(--surface-2);
+}
+
+/* Decision card */
+.paste-decision-card {
+  border-left: 4px solid var(--border);
+  transition: border-color 0.3s;
+}
+
+.paste-decision-header {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.paste-decision-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.paste-decision-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Not-a-job banner */
+.paste-not-job {
+  border-left: 4px solid #f87171;
+  background: #1a0f0f;
+}
+
+/* Save action buttons row */
+.paste-save-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  align-items: center;
+}
+
+.paste-save-actions .btn-filled {
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .paste-optional-row {
+    grid-template-columns: 1fr;
+  }
+
+  .paste-decision-header {
+    gap: 16px;
+  }
+
+  .paste-hero-btn {
+    display: none;
+  }
+
+  .paste-job-hero {
+    cursor: pointer;
+  }
+}

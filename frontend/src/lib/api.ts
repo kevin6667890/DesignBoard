@@ -440,3 +440,110 @@ export function saveSearchLeads(params: {
     body: JSON.stringify(params),
   });
 }
+
+// ===== v4.3 Paste Job Page =====
+
+export interface PasteTechStack {
+  languages: string[];
+  frontend: string[];
+  backend: string[];
+  databases: string[];
+  cloud_devops: string[];
+  networking: string[];
+  ai_tools: string[];
+  testing: string[];
+  other: string[];
+}
+
+export interface PasteExtractedJob {
+  company_name: string | null;
+  role_title: string | null;
+  location: string | null;
+  experience_level: string;
+  employment_type: string;
+  term: string | null;
+  domain: string;
+  source: string | null;
+  job_url: string | null;
+  application_url: string | null;
+  salary_range: string | null;
+  deadline: string | null;
+  application_checklist: string[];
+  tech_stack: PasteTechStack;
+  responsibilities: string[];
+  requirements: string[];
+  nice_to_have: string[];
+  risk_flags: string[];
+  summary: string;
+}
+
+export interface PasteFit {
+  overall_score: number;
+  decision: 'apply' | 'maybe' | 'skip' | 'needs_more_info';
+  priority: 'high' | 'medium' | 'low';
+  summary: string;
+  main_reason: string;
+  breakdown: {
+    role_match: number;
+    tech_stack_match: number;
+    location_match: number;
+    experience_level_match: number;
+    project_relevance: number;
+    application_risk: number;
+  };
+  matched_strengths: string[];
+  gaps: string[];
+  risk_flags: string[];
+  recommended_resume_keywords: string[];
+  recommended_projects_to_highlight: string[];
+  next_action: string;
+}
+
+export interface PasteAnalysisResult {
+  is_job_posting: true;
+  confidence: number;
+  extracted_job: PasteExtractedJob;
+  fit: PasteFit;
+  cleaned_jd_text: string;
+  ignored_noise: string[];
+}
+
+export interface PasteNotJobResult {
+  is_job_posting: false;
+  confidence: number;
+  reason: string;
+  possible_next_steps: string[];
+}
+
+export type PasteAnalyzeResponse = PasteAnalysisResult | PasteNotJobResult;
+
+export interface PasteSaveResponse {
+  job: CareerJob;
+  prepared_interview: { profile: JDProfile; blueprint: InterviewBlueprint } | null;
+  next_route: string;
+}
+
+export function analyzePastedJobPage(params: {
+  pasted_page_text: string;
+  source_hint?: string;
+  job_url?: string;
+  application_url?: string;
+  notes?: string;
+  language: Language;
+}): Promise<PasteAnalyzeResponse> {
+  return fetchJson('/career/paste/analyze', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export function savePastedJob(params: {
+  analysis_result: PasteAnalysisResult;
+  save_mode: 'save_only' | 'save_parse_score' | 'save_prepare_interview';
+  language: Language;
+}): Promise<PasteSaveResponse> {
+  return fetchJson('/career/paste/save', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
