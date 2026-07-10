@@ -31,7 +31,7 @@ function ListBlock({ title, items }: { title: string; items?: string[] }) {
 
 export default function CareerJobDetail() {
   const { jobId } = useParams<{ jobId: string }>();
-  const { t, uiLanguage, interviewLanguage } = useI18n();
+  const { t, uiLanguage } = useI18n();
   const navigate = useNavigate();
   const [job, setJob] = useState<CareerJob | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -73,7 +73,8 @@ export default function CareerJobDetail() {
     setWorking(t('preparingInterview'));
     setError('');
     try {
-      const result = await prepareCareerInterview(job.id, interviewLanguage);
+      // This creates Career-visible JD/blueprint content; live interview sessions retain interviewLanguage.
+      const result = await prepareCareerInterview(job.id, uiLanguage);
       navigate('/custom', { state: result });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

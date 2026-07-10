@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -81,6 +82,74 @@ def _safe_list(value) -> list:
 
 def _safe_str(value) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def language_instruction(output_language: str) -> str:
+    """Instruction shared by Career Mode prompts; JSON keys always remain English."""
+    if output_language == "zh":
+        return """
+Output language rule:
+All user-facing explanation fields MUST be written in Simplified Chinese.
+This includes summary, main_reason, fit summary, strengths, gaps, risk flag descriptions, recommendations, query explanations, and next actions.
+Keep company names, role titles, URLs, programming languages, frameworks, protocols, and technical keywords in their original form when appropriate.
+Examples of terms that may remain English: React, TypeScript, Python, Node.js, API, SQL, BGP, OSPF, Kubernetes, DeepSeek.
+Do NOT write English sentences in explanation fields.
+"""
+    return """
+Output language rule:
+All user-facing explanation fields should be written in English.
+"""
+
+
+class CareerLanguageError(ValueError):
+    """Raised when a Chinese Career Mode response cannot be repaired safely."""
+
+
+_EXPLANATION_KEYS = {
+    "summary", "main_reason", "matched_strengths", "gaps", "risk_flags",
+    "recommended_projects_to_highlight", "next_action", "reason", "why",
+    "possible_next_steps", "ignored_noise", "ignored_items", "instructions",
+    "profile_summary", "strengths", "recommendations", "manual_steps",
+}
+
+
+def _has_obvious_english_sentence(value: object) -> bool:
+    if not isinstance(value, str) or any("\u4e00" <= char <= "\u9fff" for char in value):
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z'-]*", value)
+    # Four prose words avoids treating technology-only values such as "React Node.js API" as English prose.
+    return len(words) >= 4 and bool(re.search(r"[.!?]|\b(is|are|the|and|for|with|to|of|this|that)\b", value, re.I))
+
+
+def _contains_wrong_language(value: object, key: str | None = None) -> bool:
+    if isinstance(value, dict):
+        return any(_contains_wrong_language(item, item_key) for item_key, item in value.items())
+    if isinstance(value, list):
+        return any(_contains_wrong_language(item, key) for item in value)
+    return bool(key in _EXPLANATION_KEYS and _has_obvious_english_sentence(value))
+
+
+async def enforce_career_output_language(result: dict, output_language: str) -> dict:
+    """Repair only user-facing prose when a Chinese model response leaks English."""
+    if output_language != "zh" or not _contains_wrong_language(result):
+        return result
+    repair_prompt = (
+        "Translate only the user-facing explanation values in this JSON into Simplified Chinese. "
+        "Keep JSON keys unchanged. Keep company names, role titles, technologies, URLs, and structured "
+        "technical stack values unchanged. Return ONLY valid JSON.\n\n"
+        f"{_json_dumps(result)}"
+    )
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat", max_tokens=4000,
+            messages=[{"role": "user", "content": repair_prompt}],
+        )
+        repaired = _extract_json_object(response.choices[0].message.content)
+    except Exception as exc:
+        raise CareerLanguageError("AI returned analysis in the wrong language. Please retry.") from exc
+    if _contains_wrong_language(repaired):
+        raise CareerLanguageError("AI returned analysis in the wrong language. Please retry.")
+    return repaired
 
 
 def _build_opening_message(question_title: str, interview_language: str = "en") -> str:
@@ -247,12 +316,11 @@ def _fallback_blueprint(language: str) -> dict:
         "scoring_focus": ["System design fundamentals", "role-relevant technical tradeoffs"],
     }
 
-async def analyze_jd(company_name: str | None, role_title: str | None, job_description: str, interview_language: str) -> dict:
-    output_language = "Chinese" if interview_language == "zh" else "English"
+async def analyze_jd(company_name: str | None, role_title: str | None, job_description: str, output_language: str) -> dict:
     prompt = (
         "Extract a structured interview profile from this job description.\n"
         "Return ONLY valid JSON. No markdown.\n"
-        f"Use {output_language} for user-visible arrays and summaries.\n\n"
+        f"{language_instruction(output_language)}\n"
         "Rules:\n"
         "- Infer company_name and role_title from the JD if not provided.\n"
         "- seniority must be intern, new_grad, junior, mid, or unknown.\n"
@@ -271,7 +339,7 @@ async def analyze_jd(company_name: str | None, role_title: str | None, job_descr
         )
         profile = _extract_json_object(response.choices[0].message.content)
     except Exception:
-        profile = _fallback_profile(company_name, role_title, interview_language)
+        profile = _fallback_profile(company_name, role_title, output_language)
 
     profile["company_name"] = profile.get("company_name") or company_name
     profile["role_title"] = profile.get("role_title") or role_title
@@ -279,15 +347,14 @@ async def analyze_jd(company_name: str | None, role_title: str | None, job_descr
     profile["responsibilities"] = _safe_list(profile.get("responsibilities"))
     profile["required_skills"] = _safe_list(profile.get("required_skills"))
     profile["interview_focus"] = _safe_list(profile.get("interview_focus"))
-    return profile
+    return await enforce_career_output_language(profile, output_language)
 
 
-async def generate_blueprint(profile: dict, interview_language: str) -> dict:
-    output_language = "Chinese" if interview_language == "zh" else "English"
+async def generate_blueprint(profile: dict, output_language: str) -> dict:
     prompt = (
         "Generate an interview blueprint from this JD profile.\n"
         "Return ONLY valid JSON. No markdown.\n"
-        f"Use {output_language} for all user-visible content.\n\n"
+        f"{language_instruction(output_language)}\n"
         "For this version, make custom_system_design_questions startable and concrete.\n"
         "Return JSON with summary, coding_focus, cs_fundamentals_focus, system_design_focus, "
         "domain_deep_dive_focus, behavioral_focus, custom_system_design_questions, and scoring_focus.\n\n"
@@ -301,7 +368,7 @@ async def generate_blueprint(profile: dict, interview_language: str) -> dict:
         )
         blueprint = _extract_json_object(response.choices[0].message.content)
     except Exception:
-        blueprint = _fallback_blueprint(interview_language)
+        blueprint = _fallback_blueprint(output_language)
 
     for key in [
         "coding_focus",
@@ -313,7 +380,7 @@ async def generate_blueprint(profile: dict, interview_language: str) -> dict:
         "scoring_focus",
     ]:
         blueprint[key] = _safe_list(blueprint.get(key))
-    return blueprint
+    return await enforce_career_output_language(blueprint, output_language)
 
 
 def _fallback_parsed_job(company_name: str | None, role_title: str | None, location: str | None, language: str) -> dict:
@@ -375,16 +442,15 @@ async def parse_career_job(
     role_title: str | None,
     location: str | None,
     candidate_profile: dict | None,
-    interview_language: str,
+    output_language: str,
 ) -> dict:
     if not raw_job_description.strip():
-        return _fallback_parsed_job(company_name, role_title, location, interview_language)
+        return _fallback_parsed_job(company_name, role_title, location, output_language)
 
-    output_language = "Chinese" if interview_language == "zh" else "English"
     prompt = (
         "Parse this internship or early-career job posting.\n"
         "Return ONLY strict JSON. No markdown.\n"
-        f"Use {output_language} for summary and list content.\n\n"
+        f"{language_instruction(output_language)}\n"
         "Rules:\n"
         "- Extract facts from the JD when present.\n"
         "- Infer cautiously only when strongly implied. Use unknown when unsure.\n"
@@ -409,8 +475,9 @@ async def parse_career_job(
         )
         parsed = _extract_json_object(response.choices[0].message.content)
     except Exception:
-        parsed = _fallback_parsed_job(company_name, role_title, location, interview_language)
-    return _normalize_parsed_job(parsed, company_name, role_title, location, interview_language)
+        parsed = _fallback_parsed_job(company_name, role_title, location, output_language)
+    parsed = _normalize_parsed_job(parsed, company_name, role_title, location, output_language)
+    return await enforce_career_output_language(parsed, output_language)
 
 
 def _fallback_fit_score(language: str) -> dict:
@@ -482,18 +549,19 @@ def _normalize_fit_score(score: dict, language: str) -> dict:
         "recommended_projects_to_highlight",
     ]:
         score[key] = _safe_list(score.get(key))
+    score["main_reason"] = _safe_str(score.get("main_reason"))
+    score["risk_flags"] = _safe_list(score.get("risk_flags"))
     return score
 
 
-async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_language: str) -> dict:
+async def score_career_job(parsed_job: dict, candidate_profile: dict, output_language: str) -> dict:
     if not parsed_job or not candidate_profile:
-        return _fallback_fit_score(interview_language)
+        return _fallback_fit_score(output_language)
 
-    output_language = "Chinese" if interview_language == "zh" else "English"
     prompt = (
         "Compare this parsed job against the candidate profile and produce a practical internship fit score.\n"
         "Return ONLY strict JSON. No markdown.\n"
-        f"Use {output_language} for all user-visible content.\n\n"
+        f"{language_instruction(output_language)}\n"
         "Rules:\n"
         "- High score does not guarantee an interview.\n"
         "- Low score does not automatically mean skip.\n"
@@ -501,7 +569,7 @@ async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_
         "- Penalize unclear seniority mismatch and obvious full-time roles if internships are targeted.\n"
         "- Reward strong project, tech, location, and remote compatibility.\n"
         "- Surface work authorization uncertainty as a risk flag, not legal advice.\n\n"
-        "Return JSON with overall_score, priority, summary, breakdown, matched_strengths, gaps, "
+        "Return JSON with overall_score, priority, summary, main_reason, breakdown, matched_strengths, gaps, risk_flags, "
         "recommended_resume_keywords, recommended_projects_to_highlight, and next_action.\n\n"
         f"Parsed job:\n{_json_dumps(parsed_job)}\n\n"
         f"Candidate profile:\n{_json_dumps(candidate_profile)}"
@@ -514,8 +582,9 @@ async def score_career_job(parsed_job: dict, candidate_profile: dict, interview_
         )
         score = _extract_json_object(response.choices[0].message.content)
     except Exception:
-        score = _fallback_fit_score(interview_language)
-    return _normalize_fit_score(score, interview_language)
+        score = _fallback_fit_score(output_language)
+    score = _normalize_fit_score(score, output_language)
+    return await enforce_career_output_language(score, output_language)
 
 
 def _fallback_resume_analysis(language: str) -> dict:
@@ -528,9 +597,8 @@ def _fallback_resume_analysis(language: str) -> dict:
 
 
 async def analyze_resume(resume_text: str, output_language: str) -> dict:
-    language_name = "Chinese" if output_language == "zh" else "English"
     prompt = f"""Extract a conservative candidate profile from this resume. Return ONLY strict JSON.
-Return all user-facing explanation fields in {language_name}. Keep company names, role titles, programming languages, protocols, frameworks, and technical terms such as API, Python, React, BGP, OSPF, Kubernetes, SQL in their original form when appropriate.
+{language_instruction(output_language)}
 Do not invent locations, work authorization, experience level, or skills. Infer multiple role targets only when the resume supports them.
 JSON schema: {{"resume_profile":{{"name":"","education":{{"school":"","degree":"","major":"","year_level":"","graduation_year":""}},"target_roles":[],"target_locations":[],"skills":{{"languages":[],"frontend":[],"backend":[],"databases":[],"cloud_devops":[],"ai_tools":[],"testing":[],"other":[]}},"projects":[{{"name":"","description":"","tech_stack":[],"relevance_tags":[]}}],"experience":[{{"company":"","role":"","summary":"","tech_stack":[],"relevance_tags":[]}}],"preferred_domains":[],"search_keywords":[],"suggested_job_titles":[],"strengths":[],"gaps":[]}},"recommended_search_queries":[{{"label":"","query":"","why":""}}],"profile_summary":""}}
 Resume text:\n{resume_text[:60000]}"""
@@ -549,7 +617,8 @@ Resume text:\n{resume_text[:60000]}"""
     profile["education"] = profile.get("education") if isinstance(profile.get("education"), dict) else {}
     for key in ["target_roles", "target_locations", "projects", "experience", "preferred_domains", "search_keywords", "suggested_job_titles", "strengths", "gaps"]:
         profile[key] = _safe_list(profile.get(key))
-    return {"resume_profile": profile, "recommended_search_queries": _safe_list(result.get("recommended_search_queries"))[:12], "profile_summary": _safe_str(result.get("profile_summary")) or fallback["profile_summary"]}
+    normalized = {"resume_profile": profile, "recommended_search_queries": _safe_list(result.get("recommended_search_queries"))[:12], "profile_summary": _safe_str(result.get("profile_summary")) or fallback["profile_summary"]}
+    return await enforce_career_output_language(normalized, output_language)
 
 
 def generate_job_search_plan(request: dict) -> dict:
@@ -726,7 +795,6 @@ async def analyze_pasted_job_page(
             "possible_next_steps": ["Paste the full job posting page text."] if language == "en" else ["请粘贴完整的岗位页面文本。"],
         }
 
-    output_language = "Chinese" if language == "zh" else "English"
     profile_json = _json_dumps(candidate_profile or {})
 
     prompt = f"""You are a precise job posting parser. Analyze the following pasted page text and:
@@ -735,7 +803,7 @@ async def analyze_pasted_job_page(
 3. Evaluate fit against the candidate profile.
 
 Return ONLY strict JSON. No markdown, no preamble, no explanation.
-Use {output_language} for all user-visible text (summaries, reasons, bullet points).
+{language_instruction(language)}
 Keep technical terms (API, Python, BGP, Kubernetes, etc.) as-is in all languages.
 
 === NOISE REMOVAL RULES ===
@@ -848,7 +916,7 @@ Pasted page text (may contain noise):
         result = _extract_json_object(raw)
     except Exception as exc:
         # Robust fallback
-        return {
+        return await enforce_career_output_language({
             "is_job_posting": False,
             "confidence": 0,
             "reason": f"Analysis failed: {exc}" if language == "en" else f"分析失败：{exc}",
@@ -859,7 +927,7 @@ Pasted page text (may contain noise):
                 "请尝试粘贴更短或更干净的文本。",
                 "也可以通过【添加岗位】手动填写岗位信息。",
             ],
-        }
+        }, language)
 
     # Normalize result
     if not result.get("is_job_posting"):
@@ -907,7 +975,7 @@ Pasted page text (may contain noise):
     for key in ["matched_strengths", "gaps", "risk_flags", "recommended_resume_keywords", "recommended_projects_to_highlight"]:
         fit[key] = _safe_list(fit.get(key))
 
-    return {
+    normalized = {
         "is_job_posting": True,
         "confidence": max(0, min(100, int(result.get("confidence", 80)))),
         "extracted_job": extracted,
@@ -915,17 +983,17 @@ Pasted page text (may contain noise):
         "cleaned_jd_text": _safe_str(result.get("cleaned_jd_text")) or text[:10000],
         "ignored_noise": _safe_list(result.get("ignored_noise")),
     }
+    return await enforce_career_output_language(normalized, language)
 
 
 async def extract_job_leads(pasted_text: str, source_hint: str | None, target_role: str | None, locations: list[str] | None, language: str) -> dict:
     text = pasted_text.strip()
     if not text:
         return {"job_leads": [], "ignored_items": []}
-    output_language = "Chinese" if language == "zh" else "English"
     prompt = (
         "Extract plausible internship or early-career job leads from pasted search result or public page text.\n"
         "Return ONLY strict JSON. No markdown.\n"
-        f"Use {output_language} for reason fields.\n\n"
+        f"{language_instruction(language)}\n"
         "Rules:\n"
         "- Extract only plausible job postings.\n"
         "- Ignore ads, navigation, repeated boilerplate, unrelated pages, and generic company pages.\n"
@@ -950,6 +1018,6 @@ async def extract_job_leads(pasted_text: str, source_hint: str | None, target_ro
         parsed = _extract_json_object(response.choices[0].message.content)
         leads = [_normalize_job_lead(lead, source_hint) for lead in _safe_list(parsed.get("job_leads"))]
         ignored = _safe_list(parsed.get("ignored_items"))
-        return {"job_leads": leads, "ignored_items": ignored[:30]}
+        return await enforce_career_output_language({"job_leads": leads, "ignored_items": ignored[:30]}, language)
     except Exception:
         return _fallback_extract_job_leads(text, source_hint, language)

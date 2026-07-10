@@ -392,10 +392,10 @@ export function scoreCareerJob(jobId: number, outputLanguage: Language): Promise
   });
 }
 
-export function prepareCareerInterview(jobId: number, interviewLanguage: Language): Promise<{ profile: JDProfile; blueprint: InterviewBlueprint }> {
+export function prepareCareerInterview(jobId: number, outputLanguage: Language): Promise<{ profile: JDProfile; blueprint: InterviewBlueprint }> {
   return fetchJson(`/career/jobs/${jobId}/prepare-interview`, {
     method: 'POST',
-    body: JSON.stringify({ output_language: interviewLanguage }),
+    body: JSON.stringify({ output_language: outputLanguage }),
   });
 }
 

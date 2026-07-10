@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
@@ -7,6 +8,7 @@ from routers.career import router as career_router
 from routers.jd import router as jd_router
 from routers.questions import router as questions_router
 from routers.sessions import router as sessions_router
+from services.ai_service import CareerLanguageError
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -56,6 +58,11 @@ ensure_v2_columns()
 ensure_v25_v3_columns()
 
 app = FastAPI(title="DesignBoard API")
+
+
+@app.exception_handler(CareerLanguageError)
+async def career_language_error_handler(_: Request, exc: CareerLanguageError):
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 # CORS
 app.add_middleware(
